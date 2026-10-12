@@ -1,0 +1,408 @@
+{
+	"info": {
+		"_postman_id": "a9d8e7c6-b5a4-4f3e-9d2c-1b0a9f8e7d6c",
+		"name": "LoanMatrix - KYC Verification API",
+		"description": "Complete Postman collection for testing all endpoints in KycVerificationController of the LoanMatrix project.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Upload KYC Document",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "customerId",
+							"value": "1",
+							"type": "text",
+							"description": "ID of the customer (e.g. 1)"
+						},
+						{
+							"key": "documentType",
+							"value": "PAN_CARD",
+							"type": "text",
+							"description": "Type of document (e.g. PAN_CARD, AADHAAR_CARD, PASSPORT)"
+						},
+						{
+							"key": "file",
+							"type": "file",
+							"src": [],
+							"description": "File upload for KYC document (e.g. PDF, PNG, JPG)"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/kyc/upload",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"kyc",
+						"upload"
+					]
+				},
+				"description": "Uploads a KYC document for a specific customer using multipart/form-data. Bound to KycUploadRequest."
+			},
+			"response": [
+				{
+					"name": "200 OK - Document Uploaded Successfully",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "customerId",
+									"value": "1",
+									"type": "text"
+								},
+								{
+									"key": "documentType",
+									"value": "PAN_CARD",
+									"type": "text"
+								},
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/kyc/upload",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"kyc",
+								"upload"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"KYC document uploaded successfully\",\n  \"data\": {\n    \"id\": 1,\n    \"documentType\": \"PAN_CARD\",\n    \"verificationStatus\": \"PENDING\"\n  }\n}"
+				}
+			]
+		},
+		{
+			"name": "Get Customer Documents",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/kyc/customer/:customerId",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"kyc",
+						"customer",
+						":customerId"
+					],
+					"variable": [
+						{
+							"key": "customerId",
+							"value": "1",
+							"description": "ID of the customer"
+						}
+					]
+				},
+				"description": "Fetches all KYC documents associated with a given customer ID."
+			},
+			"response": [
+				{
+					"name": "200 OK - Documents Fetched",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/kyc/customer/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"kyc",
+								"customer",
+								"1"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"KYC documents fetched successfully\",\n  \"data\": [\n    {\n      \"id\": 1,\n      \"documentType\": \"PAN_CARD\",\n      \"verificationStatus\": \"PENDING\"\n    }\n  ]\n}"
+				}
+			]
+		},
+		{
+			"name": "Get Pending Documents",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/kyc/pending",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"kyc",
+						"pending"
+					]
+				},
+				"description": "Retrieves all KYC documents currently in PENDING verification status."
+			},
+			"response": [
+				{
+					"name": "200 OK - Pending Documents Fetched",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/kyc/pending",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"kyc",
+								"pending"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"Pending KYC documents fetched successfully\",\n  \"data\": [\n    {\n      \"id\": 1,\n      \"documentType\": \"PAN_CARD\",\n      \"verificationStatus\": \"PENDING\"\n    }\n  ]\n}"
+				}
+			]
+		},
+		{
+			"name": "Approve Document",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/kyc/:documentId/approve",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"kyc",
+						":documentId",
+						"approve"
+					],
+					"variable": [
+						{
+							"key": "documentId",
+							"value": "1",
+							"description": "ID of the KYC document to approve"
+						}
+					]
+				},
+				"description": "Approves a specific KYC document by updating its status to APPROVED."
+			},
+			"response": [
+				{
+					"name": "200 OK - Document Approved",
+					"originalRequest": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/kyc/1/approve",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"kyc",
+								"1",
+								"approve"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"KYC document approved successfully\",\n  \"data\": {\n    \"id\": 1,\n    \"documentType\": \"PAN_CARD\",\n    \"verificationStatus\": \"APPROVED\"\n  }\n}"
+				}
+			]
+		},
+		{
+			"name": "Reject Document",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/kyc/:documentId/reject",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"kyc",
+						":documentId",
+						"reject"
+					],
+					"variable": [
+						{
+							"key": "documentId",
+							"value": "1",
+							"description": "ID of the KYC document to reject"
+						}
+					]
+				},
+				"description": "Rejects a specific KYC document by updating its status to REJECTED."
+			},
+			"response": [
+				{
+					"name": "200 OK - Document Rejected",
+					"originalRequest": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/kyc/1/reject",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"kyc",
+								"1",
+								"reject"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"success\": true,\n  \"message\": \"KYC document rejected successfully\",\n  \"data\": {\n    \"id\": 1,\n    \"documentType\": \"PAN_CARD\",\n    \"verificationStatus\": \"REJECTED\"\n  }\n}"
+				}
+			]
+		},
+		{
+			"name": "View Document Content",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/v1/kyc/document/:documentId",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"kyc",
+						"document",
+						":documentId"
+					],
+					"variable": [
+						{
+							"key": "documentId",
+							"value": "1",
+							"description": "ID of the document file to view/download"
+						}
+					]
+				},
+				"description": "Retrieves the raw byte stream of the uploaded document by ID."
+			},
+			"response": [
+				{
+					"name": "200 OK - File Bytes Returned",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/kyc/document/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"kyc",
+								"document",
+								"1"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "raw",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/octet-stream"
+						}
+					],
+					"cookie": [],
+					"body": "[Binary File Bytes Content]"
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		}
+	]
+}
