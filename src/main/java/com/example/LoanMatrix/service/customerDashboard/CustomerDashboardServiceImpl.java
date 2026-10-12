@@ -11,7 +11,7 @@ import com.example.LoanMatrix.entity.EmiSchedule;
 import com.example.LoanMatrix.entity.LoanPayment;
 import com.example.LoanMatrix.entity.KycDocument;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
-import com.example.LoanMatrix.repository.customer.CustomerRepository;
+import com.example.LoanMatrix.repository.CustomerRepository;
 import com.example.LoanMatrix.repository.dashboard.LoanAccountRepository;
 import com.example.LoanMatrix.repository.dashboard.EmiScheduleRepository;
 import com.example.LoanMatrix.repository.dashboard.LoanPaymentRepository;

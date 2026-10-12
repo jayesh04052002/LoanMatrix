@@ -1,4 +1,4 @@
-package com.example.LoanMatrix.repository.customer;
+package com.example.LoanMatrix.repository;
 import com.example.LoanMatrix.entity.Customer;
 import org.springframework.data.jpa.repository.JpaRepository;
 

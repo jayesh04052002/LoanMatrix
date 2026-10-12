@@ -9,7 +9,7 @@ import com.example.LoanMatrix.entity.EligibilityResult;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.exception.EligibilityDecisionAlreadyMadeException;
 import com.example.LoanMatrix.repository.cibil.CibilReportRepository;
-import com.example.LoanMatrix.repository.customer.CustomerRepository;
+import com.example.LoanMatrix.repository.CustomerRepository;
 import com.example.LoanMatrix.repository.eligibility.EligibilityResultRepository;
 
 import org.springframework.stereotype.Service;

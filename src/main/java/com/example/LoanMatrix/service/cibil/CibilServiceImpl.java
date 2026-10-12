@@ -6,12 +6,11 @@ import com.example.LoanMatrix.entity.Customer;
 import com.example.LoanMatrix.exception.CibilAlreadyGeneratedException;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.repository.cibil.CibilReportRepository;
-import com.example.LoanMatrix.repository.customer.CustomerRepository;
+import com.example.LoanMatrix.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.Period;
 
 @Service
 public class CibilServiceImpl implements CibilService {
@@ -54,7 +53,8 @@ public class CibilServiceImpl implements CibilService {
 
         // 2. Check if CIBIL is already generated
         boolean alreadyGenerated =
-                cibilReportRepository.existsByCustomer(customer);
+                cibilReportRepository.
+                        existsByCustomer(customer);
 
         if (alreadyGenerated) {
             throw new CibilAlreadyGeneratedException(

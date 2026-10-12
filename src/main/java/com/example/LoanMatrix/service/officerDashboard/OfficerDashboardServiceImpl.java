@@ -4,7 +4,7 @@ import com.example.LoanMatrix.dto.officerDashboardDtos.OfficerDashboardResponse;
 import com.example.LoanMatrix.entity.LoanAccount;
 import com.example.LoanMatrix.entity.LoanPayment;
 import com.example.LoanMatrix.repository.dashboard.*;
-import com.example.LoanMatrix.repository.customer.CustomerRepository;
+import com.example.LoanMatrix.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
