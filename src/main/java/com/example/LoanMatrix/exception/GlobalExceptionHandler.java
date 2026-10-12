@@ -1,8 +1,13 @@
 package com.example.LoanMatrix.exception;
 
+
 import com.example.LoanMatrix.response.ApiResponse;
 import com.example.LoanMatrix.response.ErrorDetails;
+
 import lombok.extern.slf4j.Slf4j;
+
+
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -14,6 +19,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler
 {
     @ExceptionHandler(CustomerNotFoundException.class)
+
     public ResponseEntity<ApiResponse<Void>> handleCustomerNotFound(
             CustomerNotFoundException ex) {
 
@@ -68,6 +74,7 @@ public class GlobalExceptionHandler
                         null
                 ));
     }
+
 
     @ExceptionHandler(LoanAccountNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleLoanAccountNotFound(
@@ -261,5 +268,4 @@ public class GlobalExceptionHandler
 
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
 }

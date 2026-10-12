@@ -1,0 +1,64 @@
+{
+  "info": {
+    "_postman_id": "emi-schedule-api-collection",
+    "name": "LoanMatrix - EMI Schedule API",
+    "description": "Postman Collection for testing EMI Schedule Controller endpoints in LoanMatrix application.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Generate EMI Schedule",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/emi/schedule/1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "v1",
+            "emi",
+            "schedule",
+            "1"
+          ]
+        },
+        "description": "Generates the EMI payment schedule for the specified loan account ID."
+      },
+      "response": []
+    },
+    {
+      "name": "Get EMI Schedule",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/v1/emi/schedule/1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "v1",
+            "emi",
+            "schedule",
+            "1"
+          ]
+        },
+        "description": "Fetches the generated EMI payment schedule for the specified loan account ID."
+      },
+      "response": []
+    }
+  ]
+}
