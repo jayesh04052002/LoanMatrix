@@ -53,9 +53,6 @@ public class Customer {
     @Column(name = "MonthlyInvestmentAmount", precision = 18, scale = 2)
     private BigDecimal monthlyInvestmentAmount;
 
-    @Column(name = "IsEmailVerified")
-    private Boolean emailVerified;
-
     @Column(name = "CreatedAt")
     private LocalDateTime createdAt;
 }

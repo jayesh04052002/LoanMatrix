@@ -44,62 +44,56 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentOrderResponse createPaymentOrder(CreatePaymentRequest request) throws RazorpayException {
 
-        EmiSchedule emiSchedule = emiScheduleRepository.findByIdAndLoanAccount_Id(request.getEmiScheduleId(), request.getLoanAccountId())
-                .orElseThrow(() ->
-                        new EmiNotFoundException("EMI not found")
-                );
+        // Fetch the selected EMI
+        EmiSchedule emiSchedule = emiScheduleRepository
+                .findByIdAndLoanAccount_Id(
+                        request.getEmiScheduleId(),
+                        request.getLoanAccountId()
+                )
+                .orElseThrow(() -> new RuntimeException("EMI schedule not found"));
 
-        BigDecimal emiAmount = emiSchedule.getEmi();
-
-        if ("PAID".equalsIgnoreCase(emiSchedule.getPaymentStatus() == null ? "" : emiSchedule.getPaymentStatus().trim())) {
+// Check whether the selected EMI is already paid
+        if ("PAID".equalsIgnoreCase(emiSchedule.getPaymentStatus())) {
             throw new EmiAlreadyPaidException("EMI is already paid");
         }
 
+// Fetch all EMIs for this loan account
+        List<EmiSchedule> emiSchedules = emiScheduleRepository.findByLoanAccount_Id(request.getLoanAccountId());
 
+        BigDecimal payableAmount = BigDecimal.ZERO;
+        for (int i = 0; i < emiSchedules.size(); i++) {
+            EmiSchedule schedule = emiSchedules.get(i);
+            // Include only the selected EMI and earlier EMIs
+            if (schedule.getDueDate().isAfter(emiSchedule.getDueDate())) {
+                continue;
+            }
 
-        System.out.println("EMI Schedule ID: " + request.getEmiScheduleId());
+            // Skip EMIs that are already paid
+            if ("PAID".equalsIgnoreCase(schedule.getPaymentStatus())) {
+                continue;
+            }
 
-        List<PaymentTransaction> existingTransactions =
-                paymentTransactionRepository
-                        .findByEmiSchedule_IdAndStatus(
-                                request.getEmiScheduleId(), "CREATED");
+            // Add the unpaid EMI amount
+            BigDecimal scheduleEmi = schedule.getEmi() == null
+                    ? BigDecimal.ZERO
+                    : schedule.getEmi();
 
-        System.out.println("Existing transactions count: "
-                + existingTransactions.size());
+            payableAmount = payableAmount.add(scheduleEmi);
 
-        if (!existingTransactions.isEmpty()) {
+            // Fetch penalties for this EMI
+            List<PenaltyCharge> penalties = penaltyChargeRepository.findByEmiSchedule_Id(schedule.getId());
 
-            PaymentTransaction existingTransaction =
-                    existingTransactions.get(0);
+            for (int j = 0; j < penalties.size(); j++) {
+                PenaltyCharge penalty = penalties.get(j);
 
-            System.out.println("Reusing order ID: "
-                    + existingTransaction.getRazorpayOrderId());
-
-            return new PaymentOrderResponse(
-                    existingTransaction.getRazorpayOrderId(),
-                    existingTransaction.getAmount(),
-                    "INR",
-                    razorpayConfig.getKeyId()
-            );
+                // Add penalties that are not paid
+                if (!"PAID".equalsIgnoreCase(penalty.getStatus())) {
+                    BigDecimal penaltyAmount = penalty.getPenaltyAmount() == null ? BigDecimal.ZERO : penalty.getPenaltyAmount();
+                    payableAmount = payableAmount.add(penaltyAmount);
+                }
+            }
         }
 
-
-
-
-
-        List<PenaltyCharge> penalties = penaltyChargeRepository.findByEmiSchedule_Id(request.getEmiScheduleId());
-        BigDecimal penaltyAmount = BigDecimal.ZERO;
-
-
-
-        for (PenaltyCharge penalty : penalties) {
-            penaltyAmount = penaltyAmount.add(penalty.getPenaltyAmount());
-        }
-
-        BigDecimal payableAmount = emiAmount.add(penaltyAmount);
-
-        System.out.println("EMI Amount: " + emiAmount);
-        System.out.println("Penalty Amount: " + penaltyAmount);
         System.out.println("Total Payable: " + payableAmount);
 
 //        return new PaymentOrderResponse(

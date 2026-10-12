@@ -6,8 +6,8 @@ import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.exception.ResourceNotFoundException;
 import com.example.LoanMatrix.exception.FileStorageException;
 
+import com.example.LoanMatrix.repository.CustomerRepository;
 import com.example.LoanMatrix.repository.KycDocumentRepository.KycDocumentRepository;
-import com.example.LoanMatrix.repository.customer.CustomerRepository;
 import com.example.LoanMatrix.service.Email.EmailService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;

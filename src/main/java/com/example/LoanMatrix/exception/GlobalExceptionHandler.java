@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler
 {
     @ExceptionHandler(CustomerNotFoundException.class)
-
     public ResponseEntity<ApiResponse<Void>> handleCustomerNotFound(
             CustomerNotFoundException ex) {
 
@@ -268,4 +267,11 @@ public class GlobalExceptionHandler
 
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+//    @ExceptionHandler(ScheduleAlreadyExistsException.class)
+//    public ResponseEntity<String> handleScheduleAlreadyExists(ScheduleAlreadyExistsException ex) {
+//        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
+//    }
+
+    //File -remain
 }

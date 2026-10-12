@@ -4,6 +4,8 @@ package com.example.LoanMatrix.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "users")
 @Getter
@@ -39,4 +41,13 @@ public class User {
 
     @Column(name = "Password", nullable = false)
     private String password;
+
+    @Column(name = "Otp")
+    private String otp;
+
+    @Column(name = "OtpExpiry")
+    private LocalDateTime otpExpiry;
+
+    @Column(name = "IsEmailVerified")
+    private Boolean emailVerified;
 }
