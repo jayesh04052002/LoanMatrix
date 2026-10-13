@@ -8,7 +8,7 @@ import com.example.LoanMatrix.entity.SupportTicket;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.exception.UnauthorizedLoanAccessException;
 import com.example.LoanMatrix.repository.CustomerRepository;
-import com.example.LoanMatrix.repository.Support.LoanAccountRepository;
+import com.example.LoanMatrix.repository.LoanAccountRepository;
 import com.example.LoanMatrix.repository.Support.SupportTicketRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

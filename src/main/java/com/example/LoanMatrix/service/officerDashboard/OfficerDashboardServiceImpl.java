@@ -3,8 +3,7 @@ package com.example.LoanMatrix.service.officerDashboard;
 import com.example.LoanMatrix.dto.officerDashboardDtos.OfficerDashboardResponse;
 import com.example.LoanMatrix.entity.LoanAccount;
 import com.example.LoanMatrix.entity.LoanPayment;
-import com.example.LoanMatrix.repository.dashboard.*;
-import com.example.LoanMatrix.repository.CustomerRepository;
+import com.example.LoanMatrix.repository.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;

@@ -1,5 +1,6 @@
-package com.example.LoanMatrix.repository.EmiScheduleRepository;
+package com.example.LoanMatrix.repository;
 
+import com.example.LoanMatrix.entity.Customer;
 import com.example.LoanMatrix.entity.EmiSchedule;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -16,4 +17,12 @@ public interface EmiScheduleRepository extends JpaRepository<EmiSchedule, Long> 
             Long loanAccountId,
             Integer installmentNo
     );
+
+    Optional<EmiSchedule> findByIdAndLoanAccount_Id(Long emiScheduleId, Long loanAccountId);
+
+    List<EmiSchedule> findByLoanAccount_Id(Long loanAccountId);
+
+    long countByPaymentStatus(String paymentStatus);
+
+    List<EmiSchedule> findByLoanAccount_Customer(Customer customer);
 }

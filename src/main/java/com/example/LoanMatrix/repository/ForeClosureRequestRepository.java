@@ -1,4 +1,4 @@
-package com.example.LoanMatrix.repository.closure;
+package com.example.LoanMatrix.repository;
 
 import com.example.LoanMatrix.entity.ForeClosureRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,4 +16,6 @@ public interface ForeClosureRequestRepository extends JpaRepository<ForeClosureR
     List<ForeClosureRequest> findByStatusOrderByRequestedDateDesc(String status);
 
     List<ForeClosureRequest> findByLoanAccount_IdOrderByRequestedDateDesc(Long loanAccountId);
+
+    long countByStatus(String status);
 }

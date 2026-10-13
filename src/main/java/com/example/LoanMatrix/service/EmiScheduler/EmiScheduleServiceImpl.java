@@ -6,8 +6,8 @@ import com.example.LoanMatrix.entity.LoanAccount;
 import com.example.LoanMatrix.exception.InvalidLoanStatusException;
 import com.example.LoanMatrix.exception.ResourceNotFoundException;
 import com.example.LoanMatrix.exception.ScheduleAlreadyExistsException;
-import com.example.LoanMatrix.repository.EmiScheduleRepository.EmiScheduleRepository;
-import com.example.LoanMatrix.repository.EmiScheduleRepository.LoanAccountRepository;
+import com.example.LoanMatrix.repository.EmiScheduleRepository;
+import com.example.LoanMatrix.repository.LoanAccountRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;

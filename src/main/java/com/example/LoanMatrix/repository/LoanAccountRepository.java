@@ -1,14 +1,20 @@
-
-package com.example.LoanMatrix.repository.dashboard;
+package com.example.LoanMatrix.repository;
 
 import com.example.LoanMatrix.entity.Customer;
 import com.example.LoanMatrix.entity.LoanAccount;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
-public interface LoanAccountRepository
-        extends JpaRepository<LoanAccount, Long> {
+@Repository
+public interface LoanAccountRepository extends JpaRepository<LoanAccount, Long> {
+
+    Optional<LoanAccount> findByIdAndCustomer_Id(
+            Long id,
+            Long customerId
+    );
 
     long countDistinctCustomerBy();
 
