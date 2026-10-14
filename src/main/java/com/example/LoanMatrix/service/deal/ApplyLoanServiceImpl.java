@@ -1,4 +1,4 @@
-package com.example.LoanMatrix.service.deal;
+ package com.example.LoanMatrix.service.deal;
 
 import com.example.LoanMatrix.dto.deal.ApplyLoanRequestDto;
 import com.example.LoanMatrix.dto.deal.ApplyLoanResponseDto;
@@ -41,15 +41,27 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
         log.info("Processing loan application for Customer ID: {}", requestDto.getCustomerId());
 
         Customer customer = customerRepository.findById(requestDto.getCustomerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found with ID: " + requestDto.getCustomerId()));
+                .orElseThrow(() -> {
+                    log.warn("Customer not found for loan application. Customer ID: {}",
+                            requestDto.getCustomerId());
+                    return new ResourceNotFoundException(
+                            "Customer not found with ID: " + requestDto.getCustomerId());
+                });
+
+        log.debug("Customer found. Determining interest rate for loan type: {}",
+                requestDto.getLoanType());
 
         BigDecimal interestRate = determineInterestRate(requestDto.getLoanType());
+
+        log.debug("Interest rate determined successfully.");
 
         BigDecimal calculatedEmi = calculateMonthlyEmi(
                 requestDto.getLoanAmount(),
                 interestRate,
                 requestDto.getTenureMonths()
         );
+
+        log.debug("Monthly EMI calculated successfully.");
 
         LoanDeal deal = new LoanDeal();
         deal.setCustomer(customer);
@@ -65,8 +77,7 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
         deal.setApprovedAmount(requestDto.getLoanAmount());
 
         LoanDeal savedDeal = loanDealRepository.save(deal);
-        log.info("Loan deal saved with ID: {} | Assigned ROI: {}% | Computed EMI: {}",
-                savedDeal.getId(), interestRate, calculatedEmi);
+        log.info("Loan deal saved successfully. Deal ID: {}", savedDeal.getId());
 
         return mapToDto(savedDeal, "PENDING");
     }
@@ -74,32 +85,50 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
     @Override
     public List<ApplyLoanResponseDto> getCustomerApplications(Long customerId) {
         log.info("Fetching applications for Customer ID: {}", customerId);
-        return loanDealRepository.findByCustomer_Id(customerId)
+
+        List<ApplyLoanResponseDto> applications = loanDealRepository.findByCustomer_Id(customerId)
                 .stream()
                 .map(this::deriveStatusAndMap)
                 .collect(Collectors.toList());
+
+        log.info("Customer applications fetched successfully. Customer ID: {}, Count: {}",
+                customerId, applications.size());
+
+        return applications;
     }
 
     @Override
     public List<ApplyLoanResponseDto> getPendingDeals() {
         log.info("Fetching deals not yet reviewed by an officer");
-        return loanDealRepository.findAll()
+
+        List<ApplyLoanResponseDto> pendingDeals = loanDealRepository.findAll()
                 .stream()
                 .filter(deal -> !dealReviewRepository.existsByLoanDeal_Id(deal.getId()))
                 .map(deal -> mapToDto(deal, "PENDING"))
                 .collect(Collectors.toList());
+
+        log.info("Pending deals fetched successfully. Count: {}", pendingDeals.size());
+
+        return pendingDeals;
     }
 
     @Override
     @Transactional
     public ApplyLoanResponseDto reviewDeal(Long dealId, Long officerId, String status) {
-        log.info("Officer ID {} reviewing Deal ID {} with decision: {}", officerId, dealId, status);
+        log.info("Officer ID {} reviewing Deal ID {} with decision: {}",
+                officerId, dealId, status);
 
         LoanDeal deal = loanDealRepository.findById(dealId)
-                .orElseThrow(() -> new ResourceNotFoundException("Deal not found with ID: " + dealId));
+                .orElseThrow(() -> {
+                    log.warn("Deal not found for review. Deal ID: {}", dealId);
+                    return new ResourceNotFoundException("Deal not found with ID: " + dealId);
+                });
 
         User officer = userRepository.findById(officerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Officer not found with ID: " + officerId));
+                .orElseThrow(() -> {
+                    log.warn("Officer not found. Officer ID: {}", officerId);
+                    return new ResourceNotFoundException("Officer not found with ID: " + officerId);
+                });
 
         String finalStatus = status.toUpperCase();
 
@@ -111,13 +140,17 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
         review.setStatus(finalStatus);
 
         dealReviewRepository.save(review);
-        log.info("Saved review decision [{}] to deal_reviews for Deal ID {}", finalStatus, dealId);
+        log.info("Saved review decision [{}] to deal_reviews for Deal ID {}",
+                finalStatus, dealId);
 
         return mapToDto(deal, finalStatus);
     }
 
     private BigDecimal determineInterestRate(String loanType) {
+        log.debug("Determining interest rate for loan type: {}", loanType);
+
         if (loanType == null || loanType.isBlank()) {
+            log.warn("Loan application rejected because loan type was not specified.");
             throw new InvalidLoanOperationException("Loan type must be specified.");
         }
 
@@ -128,12 +161,21 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
         } else if (normalized.contains("CAR")) {
             return BigDecimal.valueOf(10.50);
         } else {
-            throw new InvalidLoanOperationException("Unsupported loan type: " + loanType + ". Allowed: HOME_LOAN, CAR_LOAN");
+            log.warn("Unsupported loan type received: {}", loanType);
+            throw new InvalidLoanOperationException(
+                    "Unsupported loan type: " + loanType + ". Allowed: HOME_LOAN, CAR_LOAN");
         }
     }
 
-    private BigDecimal calculateMonthlyEmi(BigDecimal principal, BigDecimal annualRate, Integer tenureMonths) {
+    private BigDecimal calculateMonthlyEmi(
+            BigDecimal principal,
+            BigDecimal annualRate,
+            Integer tenureMonths) {
+
+        log.debug("Starting monthly EMI calculation.");
+
         if (principal == null || annualRate == null || tenureMonths == null || tenureMonths <= 0) {
+            log.warn("EMI calculation rejected because one or more parameters are invalid.");
             throw new InvalidLoanOperationException("Invalid parameters for EMI calculation.");
         }
 
@@ -147,13 +189,22 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
     }
 
     public ApplyLoanResponseDto deriveStatusAndMap(LoanDeal deal) {
-        Optional<DealReview> latestReview = dealReviewRepository.findTopByLoanDeal_IdOrderByIdDesc(deal.getId());
+        log.debug("Deriving current status for Deal ID: {}", deal.getId());
+
+        Optional<DealReview> latestReview =
+                dealReviewRepository.findTopByLoanDeal_IdOrderByIdDesc(deal.getId());
+
         String currentStatus = latestReview.map(DealReview::getStatus).orElse("PENDING");
+
+        log.debug("Current status derived for Deal ID: {}", deal.getId());
+
         return mapToDto(deal, currentStatus);
     }
 
     @Override
     public List<LoanTypeOptionDto> getAvailableLoanTypes() {
+        log.debug("Fetching available loan types.");
+
         return List.of(
                 LoanTypeOptionDto.builder()
                         .typeKey("HOME_LOAN")
@@ -171,6 +222,7 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
     private ApplyLoanResponseDto mapToDto(LoanDeal deal, String status) {
         Customer c = deal.getCustomer();
         String customerName = "N/A";
+
         if (c != null) {
             String first = c.getFirstName() != null ? c.getFirstName() : "";
             String last = c.getLastName() != null ? c.getLastName() : "";
@@ -196,5 +248,4 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
                 .rejectionReason(null)
                 .build();
     }
-
 }

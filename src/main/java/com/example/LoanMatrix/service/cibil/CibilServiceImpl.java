@@ -7,6 +7,8 @@ import com.example.LoanMatrix.exception.CibilAlreadyGeneratedException;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.repository.cibil.CibilReportRepository;
 import com.example.LoanMatrix.repository.CustomerRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import com.example.LoanMatrix.service.eligibility.EligibilityService;
 
@@ -15,6 +17,9 @@ import java.time.LocalDate;
 
 @Service
 public class CibilServiceImpl implements CibilService {
+
+    private static final Logger logger =
+            LoggerFactory.getLogger(CibilServiceImpl.class);
 
     private final CustomerRepository customerRepository;
     private final CibilReportRepository cibilReportRepository;
@@ -30,12 +35,18 @@ public class CibilServiceImpl implements CibilService {
     @Override
     public CibilResponse getCibilDetails(Long customerId) {
 
+        logger.info("Fetching CIBIL details for customer ID: {}", customerId);
+
         Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() ->
-                        new CustomerNotFoundException(
-                                "Customer with ID " + customerId + " not found"
-                        )
-                );
+                .orElseThrow(() -> {
+                    logger.warn("Customer not found while fetching CIBIL details. ID: {}",
+                            customerId);
+                    return new CustomerNotFoundException(
+                            "Customer with ID " + customerId + " not found"
+                    );
+                });
+
+        logger.info("CIBIL details retrieved successfully for customer ID: {}", customerId);
 
         return CibilResponse.builder()
                 .customerName(customer.getFirstName() + " " + customer.getLastName())
@@ -46,34 +57,36 @@ public class CibilServiceImpl implements CibilService {
     @Override
     public CibilResponse generateCibilScore(Long customerId) {
 
-        // 1. Find customer
-        Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() ->
-                        new CustomerNotFoundException(
-                                "Customer with ID " + customerId + " not found"
-                        )
-                );
+        logger.info("Starting CIBIL score generation for customer ID: {}", customerId);
 
-        // 2. Check if CIBIL is already generated
+
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> {
+                    logger.warn("Customer not found for CIBIL score generation. ID: {}",
+                            customerId);
+                    return new CustomerNotFoundException(
+                            "Customer with ID " + customerId + " not found"
+                    );
+                });
+
         boolean alreadyGenerated =
-                cibilReportRepository.
-                        existsByCustomer(customer);
+                cibilReportRepository.existsByCustomer(customer);
 
         if (alreadyGenerated) {
+            logger.warn("CIBIL score has already been generated for customer ID: {}",
+                    customerId);
             throw new CibilAlreadyGeneratedException(
                     "CIBIL score has already been generated for this customer."
             );
         }
 
-        // 3. Get customer details
+
         BigDecimal monthlyIncome = customer.getMonthlyIncome();
         BigDecimal monthlyInvestment = customer.getMonthlyInvestmentAmount();
 
-        // 4. Calculate age from Date of Birth
+
         LocalDate today = LocalDate.now();
         int age = today.getYear() - customer.getDateOfBirth().getYear();
-
-        // 5. Calculate Income Score
         int incomeScore;
 
         if (monthlyIncome.compareTo(BigDecimal.valueOf(25000)) < 0) {
@@ -86,7 +99,7 @@ public class CibilServiceImpl implements CibilService {
             incomeScore = 400;
         }
 
-        // 6. Calculate Employment Score
+
         int employmentScore;
 
         String employmentType = customer.getEmploymentType();
@@ -115,11 +128,10 @@ public class CibilServiceImpl implements CibilService {
             ageScore = 0;
         }
 
-        // 8. Calculate FOIR
         double foir = (monthlyInvestment.doubleValue()
                 / monthlyIncome.doubleValue()) * 100;
 
-        // 9. Calculate FOIR Score
+
         int foirScore;
 
         if (foir < 30) {
@@ -138,7 +150,6 @@ public class CibilServiceImpl implements CibilService {
                 + ageScore
                 + foirScore;
 
-        // 11. Save CIBIL report
         CibilReport cibilReport = new CibilReport();
 
         cibilReport.setCustomer(customer);
@@ -149,7 +160,9 @@ public class CibilServiceImpl implements CibilService {
         cibilReportRepository.save(cibilReport);
         eligibilityService.checkEligibility(customerId);
 
-        // 12. Prepare response
+        logger.info("CIBIL report generated successfully for customer ID: {}", customerId);
+
+
         return CibilResponse.builder()
                 .customerName(customer.getFirstName() + " " + customer.getLastName())
                 .panCard(customer.getPanCard())

@@ -1,13 +1,15 @@
-package com.example.LoanMatrix.service.EmiScheduler;
+
+        package com.example.LoanMatrix.service.EmiScheduler;
 
 import com.example.LoanMatrix.entity.EmiSchedule;
 import com.example.LoanMatrix.entity.LoanAccount;
-
 import com.example.LoanMatrix.exception.InvalidLoanStatusException;
 import com.example.LoanMatrix.exception.ResourceNotFoundException;
 import com.example.LoanMatrix.exception.ScheduleAlreadyExistsException;
 import com.example.LoanMatrix.repository.EmiScheduleRepository;
 import com.example.LoanMatrix.repository.LoanAccountRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -19,6 +21,9 @@ import java.util.List;
 @Service
 public class EmiScheduleServiceImpl implements EmiSchedulerService {
 
+    private static final Logger logger =
+            LoggerFactory.getLogger(EmiScheduleServiceImpl.class);
+
     private final EmiScheduleRepository emiScheduleRepository;
     private final LoanAccountRepository loanAccountRepository;
 
@@ -28,15 +33,21 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
         this.loanAccountRepository = loanAccountRepository;
     }
 
-
     @Override
     public List<EmiSchedule> generateSchedule(Long loanAccountId) {
 
+        logger.info("Starting EMI schedule generation for loan account ID: {}", loanAccountId);
+
         LoanAccount loanAccount = loanAccountRepository.findById(loanAccountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Loan account not found"));
+                .orElseThrow(() -> {
+                    logger.warn("Loan account not found. ID: {}", loanAccountId);
+                    return new ResourceNotFoundException("Loan account not found");
+                });
 
         if (emiScheduleRepository.existsByLoanAccountId(loanAccountId)) {
-            throw new ScheduleAlreadyExistsException("EMI schedule already exists for this loan account");
+            logger.warn("EMI schedule already exists for loan account ID: {}", loanAccountId);
+            throw new ScheduleAlreadyExistsException(
+                    "EMI schedule already exists for this loan account");
         }
 
         BigDecimal outstandingPrincipal = loanAccount.getOutstandingPrincipal();
@@ -102,27 +113,45 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
             }
         }
 
-        return emiScheduleRepository.saveAll(schedules);
+        List<EmiSchedule> savedSchedules = emiScheduleRepository.saveAll(schedules);
+
+        logger.info("EMI schedule generated successfully. Loan account ID: {}, Installments: {}",
+                loanAccountId, savedSchedules.size());
+
+        return savedSchedules;
     }
 
     @Override
     public List<EmiSchedule> getSchedule(Long loanAccountId) {
 
-        return emiScheduleRepository
-                .findByLoanAccountIdOrderByInstallmentNoAsc(loanAccountId);
-    }
+        logger.debug("Fetching EMI schedule for loan account ID: {}", loanAccountId);
 
+        List<EmiSchedule> schedules =
+                emiScheduleRepository.findByLoanAccountIdOrderByInstallmentNoAsc(
+                        loanAccountId);
+
+        logger.info("Retrieved {} EMI schedule records for loan account ID: {}",
+                schedules.size(), loanAccountId);
+
+        return schedules;
+    }
 
     @Override
     public void recalculateSchedule(Long loanAccountId) {
 
+        logger.info("Starting EMI schedule recalculation for loan account ID: {}",
+                loanAccountId);
+
         LoanAccount loanAccount = loanAccountRepository.findById(loanAccountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Loan account not found"));
+                .orElseThrow(() -> {
+                    logger.warn("Loan account not found for recalculation. ID: {}",
+                            loanAccountId);
+                    return new ResourceNotFoundException("Loan account not found");
+                });
 
         List<EmiSchedule> schedules =
                 emiScheduleRepository.findByLoanAccountIdOrderByInstallmentNoAsc(
-                        loanAccountId
-                );
+                        loanAccountId);
 
         BigDecimal outstandingPrincipal = loanAccount.getOutstandingPrincipal();
         BigDecimal annualInterestRate = loanAccount.getInterestRate();
@@ -136,8 +165,7 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
             if ("PAID".equals(schedule.getPaymentStatus())) {
                 lastPaidInstallment = Math.max(
                         lastPaidInstallment,
-                        schedule.getInstallmentNo()
-                );
+                        schedule.getInstallmentNo());
             }
         }
 
@@ -151,6 +179,8 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
         }
 
         if (remainingMonths == 0) {
+            logger.info("No pending installments to recalculate. Loan account ID: {}",
+                    loanAccountId);
             return;
         }
 
@@ -169,6 +199,9 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
             }
 
             emiScheduleRepository.saveAll(schedules);
+
+            logger.info("Cancelled pending installments because the loan is fully repaid. ID: {}",
+                    loanAccountId);
             return;
         }
 
@@ -178,8 +211,7 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
             newEmi = outstandingPrincipal.divide(
                     BigDecimal.valueOf(remainingMonths),
                     2,
-                    RoundingMode.HALF_UP
-            );
+                    RoundingMode.HALF_UP);
         } else {
             BigDecimal onePlusRate = BigDecimal.ONE.add(monthlyInterestRate);
             BigDecimal power = onePlusRate.pow(remainingMonths);
@@ -190,8 +222,7 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
                     .divide(
                             power.subtract(BigDecimal.ONE),
                             2,
-                            RoundingMode.HALF_UP
-                    );
+                            RoundingMode.HALF_UP);
         }
 
         for (EmiSchedule schedule : schedules) {
@@ -229,33 +260,48 @@ public class EmiScheduleServiceImpl implements EmiSchedulerService {
         }
 
         emiScheduleRepository.saveAll(schedules);
-    }
 
+        logger.info("EMI schedule recalculated successfully. Loan account ID: {}, Remaining installments: {}",
+                loanAccountId, remainingMonths);
+    }
 
     @Override
     public void cancelFutureEmis(Long loanAccountId) {
 
+        logger.info("Starting cancellation of future EMIs for loan account ID: {}",
+                loanAccountId);
+
         LoanAccount loanAccount = loanAccountRepository.findById(loanAccountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Loan account not found"));
+                .orElseThrow(() -> {
+                    logger.warn("Loan account not found for EMI cancellation. ID: {}",
+                            loanAccountId);
+                    return new ResourceNotFoundException("Loan account not found");
+                });
 
         if (!"CLOSED".equalsIgnoreCase(loanAccount.getLoanStatus())) {
+            logger.warn("Cannot cancel future EMIs because loan account is not closed. ID: {}",
+                    loanAccountId);
             throw new InvalidLoanStatusException("Loan account is not closed");
         }
 
         List<EmiSchedule> schedules =
                 emiScheduleRepository.findByLoanAccountIdOrderByInstallmentNoAsc(
-                        loanAccountId
-                );
+                        loanAccountId);
+
+        int cancelledCount = 0;
 
         for (EmiSchedule schedule : schedules) {
 
             if ("PENDING".equals(schedule.getPaymentStatus())) {
                 schedule.setPaymentStatus("CANCELLED");
                 schedule.setCancellationReason("Loan foreclosed");
+                cancelledCount++;
             }
         }
 
         emiScheduleRepository.saveAll(schedules);
-    }
 
+        logger.info("Future EMIs cancelled successfully. Loan account ID: {}, Cancelled installments: {}",
+                loanAccountId, cancelledCount);
+    }
 }

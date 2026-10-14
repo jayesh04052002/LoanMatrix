@@ -4,6 +4,7 @@ package com.example.LoanMatrix.config;
 import com.example.LoanMatrix.repository.UserRepository;
 import com.example.LoanMatrix.service.authentication.JwtService;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -25,7 +26,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtService jwtService,
-            UserRepository userRepository) throws Exception {
+            UserRepository userRepository,RateLimitingFilter rateLimitingFilter) throws Exception {
 
         JwtAuthenticationFilter jwtAuthenticationFilter =
                 new JwtAuthenticationFilter(jwtService, userRepository);
@@ -41,12 +42,18 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .anyRequest().authenticated()
                 )
+
+
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
                 )
+                .addFilterBefore(
+                        rateLimitingFilter,
+                        JwtAuthenticationFilter.class
+                )
 
-        .exceptionHandling(exception -> exception
+            .exceptionHandling(exception -> exception
                 .authenticationEntryPoint((request, response, ex) ->
                         response.sendError(
                                 HttpServletResponse.SC_UNAUTHORIZED,
@@ -62,5 +69,17 @@ public class SecurityConfig {
         );
 
         return http.build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<RateLimitingFilter>
+    rateLimitingFilterRegistration(RateLimitingFilter rateLimitingFilter) {
+
+        FilterRegistrationBean<RateLimitingFilter> registration =
+                new FilterRegistrationBean<>(rateLimitingFilter);
+
+        registration.setEnabled(false);
+
+        return registration;
     }
 }

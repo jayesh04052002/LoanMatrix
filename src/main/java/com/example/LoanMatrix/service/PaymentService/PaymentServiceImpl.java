@@ -19,6 +19,7 @@ import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import com.razorpay.Utils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +32,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentServiceImpl implements PaymentService {
 
     private final EmiScheduleRepository emiScheduleRepository;
@@ -43,84 +45,91 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentOrderResponse createPaymentOrder(CreatePaymentRequest request) throws RazorpayException {
 
-        // Fetch the selected EMI
+        log.info("Payment order creation started");
+
         EmiSchedule emiSchedule = emiScheduleRepository
                 .findByIdAndLoanAccount_Id(
                         request.getEmiScheduleId(),
                         request.getLoanAccountId()
                 )
-                .orElseThrow(() -> new RuntimeException("EMI schedule not found"));
+                .orElseThrow(() -> {
+                    log.warn("EMI schedule not found for the requested loan account");
+                    return new RuntimeException("EMI schedule not found");
+                });
 
-// Check whether the selected EMI is already paid
+        log.debug("EMI schedule fetched successfully: {}", emiSchedule.getId());
+
         if ("PAID".equalsIgnoreCase(emiSchedule.getPaymentStatus())) {
+            log.warn("Payment order creation rejected because EMI is already paid");
             throw new EmiAlreadyPaidException("EMI is already paid");
         }
 
-// Fetch all EMIs for this loan account
-        List<EmiSchedule> emiSchedules = emiScheduleRepository.findByLoanAccount_Id(request.getLoanAccountId());
+        List<EmiSchedule> emiSchedules =
+                emiScheduleRepository.findByLoanAccount_Id(request.getLoanAccountId());
+
+        log.debug("EMI schedules fetched: {}", emiSchedules.size());
 
         BigDecimal payableAmount = BigDecimal.ZERO;
+
         for (int i = 0; i < emiSchedules.size(); i++) {
             EmiSchedule schedule = emiSchedules.get(i);
-            // Include only the selected EMI and earlier EMIs
+
             if (schedule.getDueDate().isAfter(emiSchedule.getDueDate())) {
                 continue;
             }
 
-            // Skip EMIs that are already paid
             if ("PAID".equalsIgnoreCase(schedule.getPaymentStatus())) {
                 continue;
             }
 
-            // Add the unpaid EMI amount
             BigDecimal scheduleEmi = schedule.getEmi() == null
                     ? BigDecimal.ZERO
                     : schedule.getEmi();
 
             payableAmount = payableAmount.add(scheduleEmi);
 
-            // Fetch penalties for this EMI
-            List<PenaltyCharge> penalties = penaltyChargeRepository.findByEmiSchedule_Id(schedule.getId());
+            List<PenaltyCharge> penalties =
+                    penaltyChargeRepository.findByEmiSchedule_Id(schedule.getId());
+
+            log.debug("Penalty records fetched for an EMI: {}", penalties.size());
 
             for (int j = 0; j < penalties.size(); j++) {
                 PenaltyCharge penalty = penalties.get(j);
 
-                // Add penalties that are not paid
                 if (!"PAID".equalsIgnoreCase(penalty.getStatus())) {
-                    BigDecimal penaltyAmount = penalty.getPenaltyAmount() == null ? BigDecimal.ZERO : penalty.getPenaltyAmount();
+                    BigDecimal penaltyAmount = penalty.getPenaltyAmount() == null
+                            ? BigDecimal.ZERO
+                            : penalty.getPenaltyAmount();
+
                     payableAmount = payableAmount.add(penaltyAmount);
                 }
             }
         }
 
-        System.out.println("Total Payable: " + payableAmount);
+        log.info("Payable amount calculation completed");
 
-//        return new PaymentOrderResponse(
-//                null, payableAmount, "INR", razorpayConfig.getKeyId()
-//        );
+        RazorpayClient razorpayClient = new RazorpayClient(
+                razorpayConfig.getKeyId(),
+                razorpayConfig.getKeySecret()
+        );
 
-//        TODO: create razorpay order
-
-//        TODO: this basically create connection object for razorpay
-        RazorpayClient razorpayClient = new RazorpayClient(razorpayConfig.getKeyId(), razorpayConfig.getKeySecret());
-
-//        TODO: creating a JSON object that will be sent to the razorpay
         JSONObject orderRequest = new JSONObject();
 
-//        TODO: set the amount
-        orderRequest.put("amount", payableAmount.multiply(BigDecimal.valueOf(100)).intValue());
+        orderRequest.put(
+                "amount",
+                payableAmount.multiply(BigDecimal.valueOf(100)).intValue()
+        );
 
-//        TODO: set currency
         orderRequest.put("currency", "INR");
-
-//        TODO: Create receipt
         orderRequest.put("receipt", "EMI_" + request.getEmiScheduleId());
 
-//        TODO: send the request to the razorpay, create razorpay order
+        log.info("Creating Razorpay order");
+
         Order razorpayOrder = razorpayClient.orders.create(orderRequest);
 
-//        TODO: get the razorpay ID
         String razorpayOrderId = razorpayOrder.get("id");
+
+        log.info("Razorpay order created successfully");
 
         PaymentTransaction transaction = new PaymentTransaction();
 
@@ -133,47 +142,77 @@ public class PaymentServiceImpl implements PaymentService {
 
         paymentTransactionRepository.save(transaction);
 
-//        TODO: sending the information back to the controller, return the response
-        return new PaymentOrderResponse(razorpayOrderId, payableAmount, "INR", razorpayConfig.getKeyId());
+        log.info("Payment transaction saved successfully");
 
+        return new PaymentOrderResponse(
+                razorpayOrderId,
+                payableAmount,
+                "INR",
+                razorpayConfig.getKeyId()
+        );
     }
 
     @Override
     @Transactional
     public void verifyPayment(VerifyPaymentRequest request) throws RazorpayException {
 
+        log.info("Payment verification started");
+
         if (request == null) {
+            log.warn("Payment verification request is null");
             throw new RuntimeException("Payment verification request is required");
         }
 
-        if (request.getRazorpayOrderId() == null || request.getRazorpayOrderId().isBlank()) {
+        if (request.getRazorpayOrderId() == null
+                || request.getRazorpayOrderId().isBlank()) {
+            log.warn("Payment verification rejected because order ID is missing");
             throw new RuntimeException("Razorpay order ID is required");
         }
 
-        if (request.getRazorpayPaymentId() == null || request.getRazorpayPaymentId().isBlank()) {
+        if (request.getRazorpayPaymentId() == null
+                || request.getRazorpayPaymentId().isBlank()) {
+            log.warn("Payment verification rejected because payment ID is missing");
             throw new RuntimeException("Razorpay payment ID is required");
         }
 
-        if (request.getRazorpaySignature() == null || request.getRazorpaySignature().isBlank()) {
+        if (request.getRazorpaySignature() == null
+                || request.getRazorpaySignature().isBlank()) {
+            log.warn("Payment verification rejected because signature is missing");
             throw new RuntimeException("Razorpay signature is required");
         }
 
-        PaymentTransaction transaction = paymentTransactionRepository.findByRazorpayOrderId(request.getRazorpayOrderId()).orElseThrow(() -> new RuntimeException("Payment transaction not found"));
+        PaymentTransaction transaction = paymentTransactionRepository
+                .findByRazorpayOrderId(request.getRazorpayOrderId())
+                .orElseThrow(() -> {
+                    log.warn("Payment transaction not found for the supplied order ID");
+                    return new RuntimeException("Payment transaction not found");
+                });
 
         if ("SUCCESS".equals(transaction.getStatus())) {
+            log.warn("Payment verification rejected because payment is already verified");
             throw new PaymentAlreadyVerifiedException("Payment already verified");
         }
 
-        String payload = request.getRazorpayOrderId() + "|" + request.getRazorpayPaymentId();
-        boolean isValid = Utils.verifySignature(payload, request.getRazorpaySignature(), razorpayConfig.getKeySecret());
+        String payload = request.getRazorpayOrderId()
+                + "|" + request.getRazorpayPaymentId();
+
+        boolean isValid = Utils.verifySignature(
+                payload,
+                request.getRazorpaySignature(),
+                razorpayConfig.getKeySecret()
+        );
 
         if (!isValid) {
+            log.warn("Payment verification failed due to invalid signature");
             throw new InvalidPaymentSignatureException("Invalid payment signature");
         }
+
+        log.debug("Payment signature verified successfully");
 
         EmiSchedule emiSchedule = transaction.getEmiSchedule();
 
         if ("PAID".equals(emiSchedule.getPaymentStatus())) {
+            log.warn("Payment verification rejected because EMI is already paid");
             throw new EmiAlreadyPaidException("EMI is already paid");
         }
 
@@ -191,10 +230,14 @@ public class PaymentServiceImpl implements PaymentService {
 
         loanPaymentRepository.save(loanPayment);
 
+        log.debug("Loan payment record saved successfully");
+
         emiSchedule.setPaymentStatus("PAID");
         emiSchedule.setPaidDate(LocalDate.now());
 
         emiScheduleRepository.save(emiSchedule);
+
+        log.debug("EMI schedule updated successfully");
 
         BigDecimal currentTotalPaid = loanAccount.getTotalPaidAmount();
 
@@ -203,25 +246,40 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         loanAccount.setTotalPaidAmount(currentTotalPaid.add(paymentAmount));
-        BigDecimal currentOutstandingPrincipal = loanAccount.getOutstandingPrincipal();
+
+        BigDecimal currentOutstandingPrincipal =
+                loanAccount.getOutstandingPrincipal();
 
         if (currentOutstandingPrincipal == null) {
             currentOutstandingPrincipal = BigDecimal.ZERO;
         }
 
-        loanAccount.setOutstandingPrincipal(currentOutstandingPrincipal.subtract(principalAmount));
+        loanAccount.setOutstandingPrincipal(
+                currentOutstandingPrincipal.subtract(principalAmount)
+        );
+
         loanAccountRepository.save(loanAccount);
+
+        log.debug("Loan account payment details updated successfully");
+
         transaction.setRazorpayPaymentId(request.getRazorpayPaymentId());
         transaction.setRazorpaySignature(request.getRazorpaySignature());
         transaction.setStatus("SUCCESS");
-        paymentTransactionRepository.save(transaction);
-    }
 
+        paymentTransactionRepository.save(transaction);
+
+        log.info("Payment verified and transaction updated successfully");
+    }
 
     @Override
     public List<PaymentHistoryResponse> getPaymentHistory(Long loanAccountId) {
 
-        List<LoanPayment> payments = loanPaymentRepository.findByLoanAccount_Id(loanAccountId);
+        log.info("Fetching payment history for loan account ID: {}", loanAccountId);
+
+        List<LoanPayment> payments =
+                loanPaymentRepository.findByLoanAccount_Id(loanAccountId);
+
+        log.debug("Payment history records fetched: {}", payments.size());
 
         List<PaymentHistoryResponse> response = new ArrayList<>();
 
@@ -235,7 +293,8 @@ public class PaymentServiceImpl implements PaymentService {
             ));
         }
 
+        log.info("Payment history retrieved successfully");
+
         return response;
     }
-
 }
