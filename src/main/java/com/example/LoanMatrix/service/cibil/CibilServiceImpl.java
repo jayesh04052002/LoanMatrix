@@ -8,6 +8,7 @@ import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.repository.cibil.CibilReportRepository;
 import com.example.LoanMatrix.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
+import com.example.LoanMatrix.service.eligibility.EligibilityService;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,11 +18,13 @@ public class CibilServiceImpl implements CibilService {
 
     private final CustomerRepository customerRepository;
     private final CibilReportRepository cibilReportRepository;
+    private final EligibilityService eligibilityService;
 
     public CibilServiceImpl(CustomerRepository customerRepository,
-                            CibilReportRepository cibilReportRepository) {
+                            CibilReportRepository cibilReportRepository, EligibilityService eligibilityService) {
         this.customerRepository = customerRepository;
         this.cibilReportRepository = cibilReportRepository;
+        this.eligibilityService = eligibilityService;
     }
 
     @Override
@@ -144,6 +147,7 @@ public class CibilServiceImpl implements CibilService {
         cibilReport.setCheckDate(today);
 
         cibilReportRepository.save(cibilReport);
+        eligibilityService.checkEligibility(customerId);
 
         // 12. Prepare response
         return CibilResponse.builder()
