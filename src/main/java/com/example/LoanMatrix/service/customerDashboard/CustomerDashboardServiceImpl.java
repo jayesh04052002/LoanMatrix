@@ -1,4 +1,3 @@
-
 package com.example.LoanMatrix.service.customerDashboard;
 
 import com.example.LoanMatrix.dto.customerDashboardDtos.CustomerDashboardResponse;
@@ -13,6 +12,7 @@ import com.example.LoanMatrix.entity.KycDocument;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
 import com.example.LoanMatrix.repository.*;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Slf4j
 public class CustomerDashboardServiceImpl
         implements CustomerDashboardService {
 
@@ -49,12 +50,17 @@ public class CustomerDashboardServiceImpl
     @Transactional(readOnly = true)
     public CustomerDashboardResponse getDashboard(Long customerId) {
 
+        log.info("Fetching dashboard for customer ID: {}", customerId);
+
         Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() ->
-                        new CustomerNotFoundException(
-                                "Customer with ID " + customerId + " not found"
-                        )
-                );
+                .orElseThrow(() -> {
+                    log.warn("Customer not found with ID: {}", customerId);
+                    return new CustomerNotFoundException(
+                            "Customer with ID " + customerId + " not found"
+                    );
+                });
+
+        log.debug("Customer found. Fetching loan account details for customer ID: {}", customerId);
 
         List<LoanAccount> allLoanAccounts =
                 loanAccountRepository.findByCustomer(customer);
@@ -63,6 +69,9 @@ public class CustomerDashboardServiceImpl
                 loanAccountRepository.findByCustomerAndLoanStatus(
                         customer, "ACTIVE"
                 );
+
+        log.info("Found {} total loan accounts and {} active loan accounts for customer ID: {}",
+                allLoanAccounts.size(), activeLoanAccounts.size(), customerId);
 
         List<CustomerLoanAccountResponse> loanAccountResponses =
                 new ArrayList<>();
@@ -103,8 +112,13 @@ public class CustomerDashboardServiceImpl
             }
         }
 
+        log.debug("Prepared active loan account responses for customer ID: {}", customerId);
+
         List<EmiSchedule> emiSchedules =
                 emiScheduleRepository.findByLoanAccount_Customer(customer);
+
+        log.info("Found {} EMI schedule records for customer ID: {}",
+                emiSchedules.size(), customerId);
 
         long emisPaid = 0;
         long emisPending = 0;
@@ -149,11 +163,17 @@ public class CustomerDashboardServiceImpl
             upcomingEmiDueDate = upcomingEmi.getDueDate();
         }
 
+        log.info("EMI summary for customer ID {}: paid={}, pending={}, upcoming EMI available={}",
+                customerId, emisPaid, emisPending, upcomingEmi != null);
+
         List<LoanPayment> payments =
                 loanPaymentRepository
                         .findByLoanAccount_CustomerOrderByPaymentDateDesc(
                                 customer
                         );
+
+        log.debug("Found {} payment records for customer ID: {}",
+                payments.size(), customerId);
 
         BigDecimal totalAmountPaid = BigDecimal.ZERO;
 
@@ -189,6 +209,9 @@ public class CustomerDashboardServiceImpl
             }
         }
 
+        log.debug("Prepared {} recent payment entries for customer ID: {}",
+                recentPayments.size(), customerId);
+
         List<KycDocument> kycDocuments =
                 kycDocumentRepository.findByCustomer(customer);
 
@@ -209,6 +232,9 @@ public class CustomerDashboardServiceImpl
             documents.add(response);
         }
 
+        log.debug("Prepared {} KYC document entries for customer ID: {}",
+                documents.size(), customerId);
+
         CustomerDashboardResponse dashboard =
                 new CustomerDashboardResponse();
 
@@ -227,6 +253,8 @@ public class CustomerDashboardServiceImpl
         dashboard.setUpcomingEmiDueDate(upcomingEmiDueDate);
         dashboard.setRecentPayments(recentPayments);
         dashboard.setDocuments(documents);
+
+        log.info("Customer dashboard prepared successfully for customer ID: {}", customerId);
 
         return dashboard;
     }
