@@ -48,10 +48,13 @@ public class EligibilityServiceImpl implements EligibilityService {
 
             Customer customer = report.getCustomer();
 
-            boolean eligibilityAlreadyChecked =
-                    eligibilityResultRepository.existsByCustomer(customer);
+            EligibilityResult result =
+                    eligibilityResultRepository.findByCustomer(customer);
 
-            if (eligibilityAlreadyChecked) {
+            // Only show customers waiting for an officer's decision
+            if (result == null
+                    || !Boolean.FALSE.equals(result.getEligible())
+                    || result.getRejectionReason() != null) {
                 continue;
             }
 
@@ -61,9 +64,7 @@ public class EligibilityServiceImpl implements EligibilityService {
             response.setCustomerId(customer.getId());
 
             response.setCustomerName(
-                    customer.getFirstName()
-                            + " "
-                            + customer.getLastName()
+                    customer.getFirstName() + " " + customer.getLastName()
             );
 
             customers.add(response);
@@ -323,14 +324,23 @@ public class EligibilityServiceImpl implements EligibilityService {
         response.setCustomerId(customer.getId());
 
         response.setCustomerName(
-                customer.getFirstName()
-                        + " "
-                        + customer.getLastName()
+                customer.getFirstName() + " " + customer.getLastName()
         );
 
         response.setCibilScore(result.getCibilScore());
         response.setEligible(result.getEligible());
 
+        // Pending: not eligible yet, and no rejection decision exists
+        if (Boolean.FALSE.equals(result.getEligible())
+                && result.getRejectionReason() == null) {
+
+            response.setEligibleLoanAmount(null);
+            response.setRejectionReason(null);
+
+            return response;
+        }
+
+        // Approved
         if (Boolean.TRUE.equals(result.getEligible())) {
             response.setEligibleLoanAmount(
                     result.getEligibleLoanAmount()
@@ -339,9 +349,10 @@ public class EligibilityServiceImpl implements EligibilityService {
             response.setRejectionReason(null);
 
         } else {
-            response.setEligibleLoanAmount(
-                    BigDecimal.ZERO
-            );
+
+            // Rejected by officer
+            response.setEligibleLoanAmount(BigDecimal.ZERO);
+
 
             response.setRejectionReason(
                     result.getRejectionReason()
