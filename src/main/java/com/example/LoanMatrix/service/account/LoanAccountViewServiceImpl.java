@@ -1,4 +1,5 @@
-package com.example.LoanMatrix.service.account;
+
+        package com.example.LoanMatrix.service.account;
 
 import com.example.LoanMatrix.dto.account.LoanAccountProfileDto;
 import com.example.LoanMatrix.dto.account.LoanAccountSummaryDto;
@@ -7,6 +8,8 @@ import com.example.LoanMatrix.entity.LoanAccount;
 import com.example.LoanMatrix.exception.ResourceNotFoundException;
 import com.example.LoanMatrix.repository.account.LoanAccountQueryRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,16 +21,25 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class LoanAccountViewServiceImpl implements LoanAccountViewService {
 
+    private static final Logger logger =
+            LoggerFactory.getLogger(LoanAccountViewServiceImpl.class);
+
     private final LoanAccountQueryRepository loanAccountQueryRepository;
 
     @Override
     public List<LoanAccountSummaryDto> getAllAccountsForOfficer(String statusFilter) {
+
+        logger.info("Fetching loan accounts for officer. Status filter: {}", statusFilter);
+
         List<LoanAccount> accounts;
+
         if (statusFilter != null && !statusFilter.trim().isEmpty() && !"All Status".equalsIgnoreCase(statusFilter)) {
             accounts = loanAccountQueryRepository.findByLoanStatusOrderByCreatedAtDesc(statusFilter);
         } else {
             accounts = loanAccountQueryRepository.findAllByOrderByCreatedAtDesc();
         }
+
+        logger.info("Retrieved {} loan accounts for officer", accounts.size());
 
         return accounts.stream()
                 .map(this::mapToSummaryDto)
@@ -36,18 +48,34 @@ public class LoanAccountViewServiceImpl implements LoanAccountViewService {
 
     @Override
     public List<LoanAccountSummaryDto> getAccountsForCustomer(Long customerId) {
-        return loanAccountQueryRepository.findByCustomer_IdOrderByCreatedAtDesc(customerId)
-                .stream()
-                .map(this::mapToSummaryDto)
-                .collect(Collectors.toList());
+
+        logger.info("Fetching loan accounts for customer ID: {}", customerId);
+
+        List<LoanAccountSummaryDto> accounts =
+                loanAccountQueryRepository.findByCustomer_IdOrderByCreatedAtDesc(customerId)
+                        .stream()
+                        .map(this::mapToSummaryDto)
+                        .collect(Collectors.toList());
+
+        logger.info("Retrieved {} loan accounts for customer ID: {}",
+                accounts.size(), customerId);
+
+        return accounts;
     }
 
     @Override
     public LoanAccountProfileDto getAccountDetailsByAccountNo(String loanAccountNo) {
-        LoanAccount account = loanAccountQueryRepository.findByLoanAccountNo(loanAccountNo)
-                .orElseThrow(() -> new ResourceNotFoundException("Loan account not found with account no: " + loanAccountNo));
 
-        return LoanAccountProfileDto.builder()
+        logger.info("Fetching loan account details");
+
+        LoanAccount account = loanAccountQueryRepository.findByLoanAccountNo(loanAccountNo)
+                .orElseThrow(() -> {
+                    logger.warn("Loan account not found");
+                    return new ResourceNotFoundException(
+                            "Loan account not found with account no: " + loanAccountNo);
+                });
+
+        LoanAccountProfileDto profile = LoanAccountProfileDto.builder()
                 .id(account.getId())
                 .loanAccountNo(account.getLoanAccountNo())
                 .customerName(formatCustomerName(account.getCustomer()))
@@ -61,6 +89,11 @@ public class LoanAccountViewServiceImpl implements LoanAccountViewService {
                 .disbursementDate(account.getDisbursementDate())
                 .createdAt(account.getCreatedAt())
                 .build();
+
+        logger.info("Loan account details retrieved successfully. Account ID: {}",
+                account.getId());
+
+        return profile;
     }
 
     private LoanAccountSummaryDto mapToSummaryDto(LoanAccount acc) {

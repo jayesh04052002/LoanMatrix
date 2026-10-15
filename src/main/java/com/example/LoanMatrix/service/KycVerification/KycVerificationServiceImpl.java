@@ -9,6 +9,8 @@ import com.example.LoanMatrix.exception.FileStorageException;
 import com.example.LoanMatrix.repository.CustomerRepository;
 import com.example.LoanMatrix.repository.KycDocumentRepository;
 import com.example.LoanMatrix.service.Email.EmailService;
+
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,25 +21,36 @@ import java.nio.file.Paths;
 import java.util.List;
 
 @Service
+@Slf4j
 public class KycVerificationServiceImpl implements KycVerificationService {
 
     private final KycDocumentRepository kycDocumentRepository;
     private final CustomerRepository customerRepository;
     private final EmailService emailService;
 
-    public KycVerificationServiceImpl(KycDocumentRepository kycDocumentRepository,
-                                      CustomerRepository customerRepository,
-                                      EmailService emailService) {
+    public KycVerificationServiceImpl(
+            KycDocumentRepository kycDocumentRepository,
+            CustomerRepository customerRepository,
+            EmailService emailService) {
+
         this.kycDocumentRepository = kycDocumentRepository;
         this.customerRepository = customerRepository;
         this.emailService = emailService;
     }
 
     @Override
-    public KycDocument uploadDocument(Long customerId, String documentType, MultipartFile file) {
+    public KycDocument uploadDocument(
+            Long customerId, String documentType, MultipartFile file) {
+
+        log.info("Starting KYC document upload for Customer ID: {}, Document Type: {}",
+                customerId, documentType);
 
         Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new CustomerNotFoundException("Customer not found"));
+                .orElseThrow(() -> {
+                    log.warn("Customer not found for KYC document upload. Customer ID: {}",
+                            customerId);
+                    return new CustomerNotFoundException("Customer not found");
+                });
 
         try {
             String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
@@ -54,34 +67,66 @@ public class KycVerificationServiceImpl implements KycVerificationService {
             document.setFilePath(filePath.toString());
             document.setVerificationStatus("PENDING");
 
-            return kycDocumentRepository.save(document);
+            KycDocument savedDocument = kycDocumentRepository.save(document);
+
+            log.info("KYC document uploaded successfully. Document ID: {}, Customer ID: {}",
+                    savedDocument.getId(), customerId);
+
+            return savedDocument;
 
         } catch (IOException e) {
+            log.error("Failed to store KYC document for Customer ID: {}", customerId, e);
             throw new FileStorageException("Failed to upload document");
         }
     }
 
     @Override
     public List<KycDocument> getCustomerDocuments(Long customerId) {
-        Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new CustomerNotFoundException("Customer not found"));
+        log.info("Fetching KYC documents for Customer ID: {}", customerId);
 
-        return kycDocumentRepository.findByCustomerId(customer.getId());
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> {
+                    log.warn("Customer not found while fetching KYC documents. Customer ID: {}",
+                            customerId);
+                    return new CustomerNotFoundException("Customer not found");
+                });
+
+        List<KycDocument> documents =
+                kycDocumentRepository.findByCustomerId(customer.getId());
+
+        log.info("KYC documents fetched for Customer ID: {}. Count: {}",
+                customerId, documents.size());
+
+        return documents;
     }
 
     @Override
     public List<KycDocument> getPendingDocuments() {
-        return kycDocumentRepository.findByVerificationStatus("PENDING");
+        log.info("Fetching pending KYC documents");
+
+        List<KycDocument> documents =
+                kycDocumentRepository.findByVerificationStatus("PENDING");
+
+        log.info("Pending KYC documents fetched. Count: {}", documents.size());
+
+        return documents;
     }
 
     @Override
     public KycDocument approveDocument(Long documentId) {
+        log.info("Approving KYC document. Document ID: {}", documentId);
 
         KycDocument document = kycDocumentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("KYC document not found"));
+                .orElseThrow(() -> {
+                    log.warn("KYC document not found for approval. Document ID: {}",
+                            documentId);
+                    return new ResourceNotFoundException("KYC document not found");
+                });
 
         document.setVerificationStatus("APPROVED");
         KycDocument savedDocument = kycDocumentRepository.save(document);
+
+        log.info("KYC document approved and saved. Document ID: {}", documentId);
 
         emailService.sendKycStatusEmail(
                 document.getCustomer().getEmail(),
@@ -94,17 +139,26 @@ public class KycVerificationServiceImpl implements KycVerificationService {
                 """
         );
 
+        log.info("KYC approval email request completed. Document ID: {}", documentId);
+
         return savedDocument;
     }
 
     @Override
     public KycDocument rejectDocument(Long documentId) {
+        log.info("Rejecting KYC document. Document ID: {}", documentId);
 
         KycDocument document = kycDocumentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("KYC document not found"));
+                .orElseThrow(() -> {
+                    log.warn("KYC document not found for rejection. Document ID: {}",
+                            documentId);
+                    return new ResourceNotFoundException("KYC document not found");
+                });
 
         document.setVerificationStatus("REJECTED");
         KycDocument savedDocument = kycDocumentRepository.save(document);
+
+        log.info("KYC document rejected and saved. Document ID: {}", documentId);
 
         emailService.sendKycStatusEmail(
                 document.getCustomer().getEmail(),
@@ -118,20 +172,32 @@ public class KycVerificationServiceImpl implements KycVerificationService {
                 """
         );
 
+        log.info("KYC rejection email request completed. Document ID: {}", documentId);
+
         return savedDocument;
     }
 
     @Override
     public byte[] viewDocument(Long documentId) {
+        log.info("Request to view KYC document. Document ID: {}", documentId);
 
         KycDocument document = kycDocumentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("KYC document not found"));
+                .orElseThrow(() -> {
+                    log.warn("KYC document not found for viewing. Document ID: {}",
+                            documentId);
+                    return new ResourceNotFoundException("KYC document not found");
+                });
 
         try {
             Path path = Paths.get(document.getFilePath());
-            return Files.readAllBytes(path);
+            byte[] documentContent = Files.readAllBytes(path);
+
+            log.info("KYC document read successfully. Document ID: {}", documentId);
+
+            return documentContent;
 
         } catch (IOException e) {
+            log.error("Unable to read KYC document. Document ID: {}", documentId, e);
             throw new FileStorageException("Unable to view document");
         }
     }
