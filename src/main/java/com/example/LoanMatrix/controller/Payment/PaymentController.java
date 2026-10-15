@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Controller
+@RestController
 @RequestMapping("/api/v1/payment")
 @RequiredArgsConstructor
 public class PaymentController {
@@ -72,4 +72,60 @@ public class PaymentController {
         return ResponseEntity.ok(apiResponse);
     }
 
+
+    @PostMapping("/partial-closure/create-order/{requestId}")
+    public ResponseEntity<ApiResponse<PaymentOrderResponse>>
+    createPartialClosurePaymentOrder(
+            @PathVariable Long requestId) throws RazorpayException {
+
+        PaymentOrderResponse response =
+                paymentService.createPartialClosurePaymentOrder(requestId);
+
+        ApiResponse<PaymentOrderResponse> apiResponse =
+                ApiResponse.<PaymentOrderResponse>builder()
+                        .success(true)
+                        .message("Partial closure payment order created successfully")
+                        .data(response)
+                        .error(null)
+                        .build();
+
+        return ResponseEntity.ok(apiResponse);
+    }
+
+
+    @PostMapping("/partial-closure/verify-payment")
+    public ResponseEntity<ApiResponse<Void>>
+    verifyPartialClosurePayment(
+            @RequestBody VerifyPaymentRequest request)
+            throws RazorpayException {
+
+        paymentService.verifyPartialClosurePayment(request);
+
+        ApiResponse<Void> apiResponse = ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Partial closure payment verified successfully")
+                        .data(null)
+                        .error(null)
+                        .build();
+
+        return ResponseEntity.ok(apiResponse);
+    }
+
+    @PostMapping("/full-closure/create-order/{requestId}")
+    public PaymentOrderResponse createFullClosurePaymentOrder(
+            @PathVariable Long requestId) throws RazorpayException {
+
+        return paymentService.createFullClosurePaymentOrder(requestId);
+    }
+
+
+    @PostMapping("/full-closure/verify-payment")
+    public ResponseEntity<String> verifyFullClosurePayment(
+            @RequestBody VerifyPaymentRequest request)
+            throws RazorpayException {
+
+        paymentService.verifyFullClosurePayment(request);
+
+        return ResponseEntity.ok("Full closure payment successful");
+    }
 }
