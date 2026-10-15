@@ -26,9 +26,15 @@ public class PaymentTransaction {
     @JoinColumn(name = "LoanAccountId", nullable = false)
     private LoanAccount loanAccount;
 
+    // EMI payment relationship
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "EmiScheduleId", nullable = false)
+    @JoinColumn(name = "emi_schedule_id", nullable = true)
     private EmiSchedule emiSchedule;
+
+    // Partial closure payment relationship
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "fore_closure_request_id")
+    private ForeClosureRequest foreClosureRequest;
 
     @Column(name = "RazorpayOrderId", nullable = false, unique = true)
     private String razorpayOrderId;
