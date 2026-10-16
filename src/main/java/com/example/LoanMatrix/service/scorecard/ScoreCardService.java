@@ -10,4 +10,8 @@ public interface ScoreCardService {
     Page<ScoreCardResponse> getEligibleCustomers(int page);
 
     ScoreCardResponse getScoreCard(Long customerId);
+
+    void saveOrUpdateFromEligibility(
+            com.example.LoanMatrix.entity.EligibilityResult result
+    );
 }
