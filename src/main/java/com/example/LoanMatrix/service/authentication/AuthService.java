@@ -226,8 +226,16 @@ public class AuthService {
 
         String token = jwtService.generateToken(user.getEmail());
 
+        Long customerId = null;
+
+        if (user.getCustomer() != null) {
+            customerId = user.getCustomer().getId();
+        }
+
         return LoginResponse.builder()
                 .token(token)
+                .role(user.getRole().getRoleName())
+                .customerId(customerId)
                 .build();
     }
 
@@ -306,8 +314,16 @@ public class AuthService {
 
         String token = jwtService.generateToken(user.getEmail());
 
+        Long customerId = null;
+
+        if (user.getCustomer() != null) {
+            customerId = user.getCustomer().getId();
+        }
+
         return LoginResponse.builder()
                 .token(token)
+                .role(user.getRole().getRoleName())
+                .customerId(customerId)
                 .build();
     }
 }
