@@ -8,19 +8,10 @@ import java.util.List;
 public interface SupportTicketService {
 
     SupportTicketResponse createTicket(Long customerId, CreateSupportTicketRequest request);
-
     List<SupportTicketResponse> getCustomerTickets(Long customerId);
-
     SupportTicketResponse getTicket(Long ticketId, Long customerId);
-
     List<SupportTicketResponse> getAllTickets();
+    SupportTicketResponse updateTicketStatus(Long ticketId, String status);
 
-    SupportTicketResponse updateTicketStatus(
-            Long ticketId,
-            String status
-    );
-
-    SupportTicketResponse getAdminTicket(
-            Long ticketId
-    );
+    SupportTicketResponse getAdminTicket(Long ticketId);
 }
