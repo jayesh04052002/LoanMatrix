@@ -12,11 +12,10 @@ import java.util.List;
 public interface PaymentService {
 
     PaymentOrderResponse createPaymentOrder(CreatePaymentRequest request) throws RazorpayException;
-
     void verifyPayment(VerifyPaymentRequest request) throws RazorpayException;
-
     List<PaymentHistoryResponse> getPaymentHistory(Long loanAccountId);
-
-
-
+    PaymentOrderResponse createPartialClosurePaymentOrder(Long requestId) throws RazorpayException;
+    void verifyPartialClosurePayment(VerifyPaymentRequest request) throws RazorpayException;
+    PaymentOrderResponse createFullClosurePaymentOrder(Long requestId) throws RazorpayException;
+    void verifyFullClosurePayment(VerifyPaymentRequest request) throws RazorpayException;
 }

@@ -14,9 +14,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     Optional<PaymentTransaction> findByRazorpayPaymentId(String razorpayPaymentId);
 
-    List<PaymentTransaction> findByEmiSchedule_IdAndStatus(
-            Long emiScheduleId,
-            String status
-    );
+    List<PaymentTransaction> findByEmiSchedule_IdAndStatus(Long emiScheduleId, String status);
 
+    List<PaymentTransaction> findByForeClosureRequest_Id(Long requestId);
 }

@@ -6,20 +6,19 @@ import com.example.LoanMatrix.dto.Payment.PaymentHistoryResponse;
 import com.example.LoanMatrix.dto.Payment.PaymentOrderResponse;
 import com.example.LoanMatrix.dto.Payment.VerifyPaymentRequest;
 import com.example.LoanMatrix.entity.*;
-import com.example.LoanMatrix.exception.EmiAlreadyPaidException;
-import com.example.LoanMatrix.exception.InvalidPaymentSignatureException;
-import com.example.LoanMatrix.exception.PaymentAlreadyVerifiedException;
+import com.example.LoanMatrix.exception.*;
 import com.example.LoanMatrix.repository.EmiScheduleRepository;
+import com.example.LoanMatrix.repository.ForeClosureRequestRepository;
+import com.example.LoanMatrix.repository.LoanAccountRepository;
 import com.example.LoanMatrix.repository.LoanPaymentRepository;
 import com.example.LoanMatrix.repository.Payment.PaymentTransactionRepository;
-import com.example.LoanMatrix.repository.Payment.PenaltyChargeRepository;
-import com.example.LoanMatrix.repository.LoanAccountRepository;
+import com.example.LoanMatrix.repository.closure.LoanClosureRepository;
+import com.example.LoanMatrix.service.EmiScheduler.EmiSchedulerService;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import com.razorpay.Utils;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,187 +31,84 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class PaymentServiceImpl implements PaymentService {
 
     private final EmiScheduleRepository emiScheduleRepository;
     private final LoanPaymentRepository loanPaymentRepository;
     private final PaymentTransactionRepository paymentTransactionRepository;
-    private final PenaltyChargeRepository penaltyChargeRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final RazorpayConfig razorpayConfig;
+    private final PenaltyService penaltyService;
+    private final LoanClosureRepository loanClosureRepository;
+    private final ForeClosureRequestRepository foreClosureRequestRepository;
+    private final EmiSchedulerService emiSchedulerService;
+
+    private Order createOrder(BigDecimal amount, String receipt) throws RazorpayException {
+
+        RazorpayClient client = new RazorpayClient(razorpayConfig.getKeyId(), razorpayConfig.getKeySecret());
+
+        JSONObject data = new JSONObject();
+        data.put("amount", amount.movePointRight(2).intValueExact());
+        data.put("currency", "INR");
+        data.put("receipt", receipt);
+
+        return client.orders.create(data);
+    }
 
     @Override
     public PaymentOrderResponse createPaymentOrder(CreatePaymentRequest request) throws RazorpayException {
 
-        log.info("Payment order creation started");
-
-        EmiSchedule emiSchedule = emiScheduleRepository
-                .findByIdAndLoanAccount_Id(
-                        request.getEmiScheduleId(),
-                        request.getLoanAccountId()
-                )
-                .orElseThrow(() -> {
-                    log.warn("EMI schedule not found for the requested loan account");
-                    return new RuntimeException("EMI schedule not found");
-                });
-
-        log.debug("EMI schedule fetched successfully: {}", emiSchedule.getId());
+        LoanAccount loanAccount = loanAccountRepository.findById(request.getLoanAccountId()).orElseThrow(() -> new LoanAccountNotFoundException("Loan account not found"));
+        EmiSchedule emiSchedule = emiScheduleRepository.findByIdAndLoanAccount_Id(request.getEmiScheduleId(), loanAccount.getId()).orElseThrow(() -> new EmiNotFoundException("EMI schedule not found for this loan account"));
 
         if ("PAID".equalsIgnoreCase(emiSchedule.getPaymentStatus())) {
-            log.warn("Payment order creation rejected because EMI is already paid");
             throw new EmiAlreadyPaidException("EMI is already paid");
         }
 
-        List<EmiSchedule> emiSchedules =
-                emiScheduleRepository.findByLoanAccount_Id(request.getLoanAccountId());
+        BigDecimal emiAmount = emiSchedule.getEmi() == null ? BigDecimal.ZERO : emiSchedule.getEmi();
+        BigDecimal penaltyAmount = penaltyService.calculateAndUpdatePenalty(emiSchedule);
+        BigDecimal payableAmount = emiAmount.add(penaltyAmount);
 
-        log.debug("EMI schedules fetched: {}", emiSchedules.size());
+        Order order = createOrder(payableAmount, "EMI_" + request.getEmiScheduleId());
 
-        BigDecimal payableAmount = BigDecimal.ZERO;
-
-        for (int i = 0; i < emiSchedules.size(); i++) {
-            EmiSchedule schedule = emiSchedules.get(i);
-
-            if (schedule.getDueDate().isAfter(emiSchedule.getDueDate())) {
-                continue;
-            }
-
-            if ("PAID".equalsIgnoreCase(schedule.getPaymentStatus())) {
-                continue;
-            }
-
-            BigDecimal scheduleEmi = schedule.getEmi() == null
-                    ? BigDecimal.ZERO
-                    : schedule.getEmi();
-
-            payableAmount = payableAmount.add(scheduleEmi);
-
-            List<PenaltyCharge> penalties =
-                    penaltyChargeRepository.findByEmiSchedule_Id(schedule.getId());
-
-            log.debug("Penalty records fetched for an EMI: {}", penalties.size());
-
-            for (int j = 0; j < penalties.size(); j++) {
-                PenaltyCharge penalty = penalties.get(j);
-
-                if (!"PAID".equalsIgnoreCase(penalty.getStatus())) {
-                    BigDecimal penaltyAmount = penalty.getPenaltyAmount() == null
-                            ? BigDecimal.ZERO
-                            : penalty.getPenaltyAmount();
-
-                    payableAmount = payableAmount.add(penaltyAmount);
-                }
-            }
-        }
-
-        log.info("Payable amount calculation completed");
-
-        RazorpayClient razorpayClient = new RazorpayClient(
-                razorpayConfig.getKeyId(),
-                razorpayConfig.getKeySecret()
-        );
-
-        JSONObject orderRequest = new JSONObject();
-
-        orderRequest.put(
-                "amount",
-                payableAmount.multiply(BigDecimal.valueOf(100)).intValue()
-        );
-
-        orderRequest.put("currency", "INR");
-        orderRequest.put("receipt", "EMI_" + request.getEmiScheduleId());
-
-        log.info("Creating Razorpay order");
-
-        Order razorpayOrder = razorpayClient.orders.create(orderRequest);
-
-        String razorpayOrderId = razorpayOrder.get("id");
-
-        log.info("Razorpay order created successfully");
+        String orderId = order.get("id");
 
         PaymentTransaction transaction = new PaymentTransaction();
-
-        transaction.setLoanAccount(emiSchedule.getLoanAccount());
+        transaction.setLoanAccount(loanAccount);
         transaction.setEmiSchedule(emiSchedule);
-        transaction.setRazorpayOrderId(razorpayOrderId);
+        transaction.setRazorpayOrderId(orderId);
         transaction.setAmount(payableAmount);
         transaction.setStatus("CREATED");
         transaction.setCreatedAt(LocalDateTime.now());
 
         paymentTransactionRepository.save(transaction);
 
-        log.info("Payment transaction saved successfully");
-
-        return new PaymentOrderResponse(
-                razorpayOrderId,
-                payableAmount,
-                "INR",
-                razorpayConfig.getKeyId()
-        );
+        return new PaymentOrderResponse(orderId, payableAmount, "INR", razorpayConfig.getKeyId());
     }
 
     @Override
     @Transactional
     public void verifyPayment(VerifyPaymentRequest request) throws RazorpayException {
 
-        log.info("Payment verification started");
-
-        if (request == null) {
-            log.warn("Payment verification request is null");
-            throw new RuntimeException("Payment verification request is required");
+        if (request == null || request.getRazorpayOrderId() == null || request.getRazorpayOrderId().isBlank() || request.getRazorpayPaymentId() == null || request.getRazorpayPaymentId().isBlank() || request.getRazorpaySignature() == null || request.getRazorpaySignature().isBlank()) {
+            throw new RuntimeException("Payment details are required");
         }
 
-        if (request.getRazorpayOrderId() == null
-                || request.getRazorpayOrderId().isBlank()) {
-            log.warn("Payment verification rejected because order ID is missing");
-            throw new RuntimeException("Razorpay order ID is required");
-        }
+        PaymentTransaction transaction = paymentTransactionRepository.findByRazorpayOrderId(request.getRazorpayOrderId()).orElseThrow(() -> new RuntimeException("Payment transaction not found"));
+        String payload = request.getRazorpayOrderId() + "|" + request.getRazorpayPaymentId();
+        boolean valid = Utils.verifySignature(payload, request.getRazorpaySignature(), razorpayConfig.getKeySecret());
 
-        if (request.getRazorpayPaymentId() == null
-                || request.getRazorpayPaymentId().isBlank()) {
-            log.warn("Payment verification rejected because payment ID is missing");
-            throw new RuntimeException("Razorpay payment ID is required");
-        }
-
-        if (request.getRazorpaySignature() == null
-                || request.getRazorpaySignature().isBlank()) {
-            log.warn("Payment verification rejected because signature is missing");
-            throw new RuntimeException("Razorpay signature is required");
-        }
-
-        PaymentTransaction transaction = paymentTransactionRepository
-                .findByRazorpayOrderId(request.getRazorpayOrderId())
-                .orElseThrow(() -> {
-                    log.warn("Payment transaction not found for the supplied order ID");
-                    return new RuntimeException("Payment transaction not found");
-                });
-
-        if ("SUCCESS".equals(transaction.getStatus())) {
-            log.warn("Payment verification rejected because payment is already verified");
-            throw new PaymentAlreadyVerifiedException("Payment already verified");
-        }
-
-        String payload = request.getRazorpayOrderId()
-                + "|" + request.getRazorpayPaymentId();
-
-        boolean isValid = Utils.verifySignature(
-                payload,
-                request.getRazorpaySignature(),
-                razorpayConfig.getKeySecret()
-        );
-
-        if (!isValid) {
-            log.warn("Payment verification failed due to invalid signature");
+        if (!valid) {
             throw new InvalidPaymentSignatureException("Invalid payment signature");
         }
 
-        log.debug("Payment signature verified successfully");
+        if ("SUCCESS".equalsIgnoreCase(transaction.getStatus())) {
+            throw new PaymentAlreadyVerifiedException("Payment already verified");
+        }
 
         EmiSchedule emiSchedule = transaction.getEmiSchedule();
 
-        if ("PAID".equals(emiSchedule.getPaymentStatus())) {
-            log.warn("Payment verification rejected because EMI is already paid");
+        if ("PAID".equalsIgnoreCase(emiSchedule.getPaymentStatus())) {
             throw new EmiAlreadyPaidException("EMI is already paid");
         }
 
@@ -220,81 +116,320 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal paymentAmount = transaction.getAmount();
         BigDecimal principalAmount = emiSchedule.getPrincipalAmount();
 
-        LoanPayment loanPayment = new LoanPayment();
+        LoanPayment payment = new LoanPayment();
+        payment.setLoanAccount(loanAccount);
+        payment.setPaymentAmount(paymentAmount);
+        payment.setPaymentDate(LocalDate.now());
+        payment.setPaymentStatus("SUCCESS");
+        payment.setPaymentName("EMI Payment");
 
-        loanPayment.setLoanAccount(loanAccount);
-        loanPayment.setPaymentAmount(paymentAmount);
-        loanPayment.setPaymentDate(LocalDate.now());
-        loanPayment.setPaymentStatus("SUCCESS");
-        loanPayment.setPaymentName("EMI Payment");
-
-        loanPaymentRepository.save(loanPayment);
-
-        log.debug("Loan payment record saved successfully");
+        loanPaymentRepository.save(payment);
 
         emiSchedule.setPaymentStatus("PAID");
         emiSchedule.setPaidDate(LocalDate.now());
-
         emiScheduleRepository.save(emiSchedule);
 
-        log.debug("EMI schedule updated successfully");
+        BigDecimal totalPaid = loanAccount.getTotalPaidAmount();
 
-        BigDecimal currentTotalPaid = loanAccount.getTotalPaidAmount();
-
-        if (currentTotalPaid == null) {
-            currentTotalPaid = BigDecimal.ZERO;
+        if (totalPaid == null) {
+            totalPaid = BigDecimal.ZERO;
         }
 
-        loanAccount.setTotalPaidAmount(currentTotalPaid.add(paymentAmount));
+        loanAccount.setTotalPaidAmount(totalPaid.add(paymentAmount));
+        BigDecimal outstanding = loanAccount.getOutstandingPrincipal();
 
-        BigDecimal currentOutstandingPrincipal =
-                loanAccount.getOutstandingPrincipal();
-
-        if (currentOutstandingPrincipal == null) {
-            currentOutstandingPrincipal = BigDecimal.ZERO;
+        if (outstanding == null) {
+            outstanding = BigDecimal.ZERO;
         }
 
-        loanAccount.setOutstandingPrincipal(
-                currentOutstandingPrincipal.subtract(principalAmount)
-        );
-
+        loanAccount.setOutstandingPrincipal(outstanding.subtract(principalAmount));
         loanAccountRepository.save(loanAccount);
-
-        log.debug("Loan account payment details updated successfully");
 
         transaction.setRazorpayPaymentId(request.getRazorpayPaymentId());
         transaction.setRazorpaySignature(request.getRazorpaySignature());
         transaction.setStatus("SUCCESS");
+        emiSchedulerService.recalculateSchedule(loanAccount.getId());
 
         paymentTransactionRepository.save(transaction);
-
-        log.info("Payment verified and transaction updated successfully");
     }
+
+    // PAYMENT HISTORY
 
     @Override
     public List<PaymentHistoryResponse> getPaymentHistory(Long loanAccountId) {
 
-        log.info("Fetching payment history for loan account ID: {}", loanAccountId);
-
-        List<LoanPayment> payments =
-                loanPaymentRepository.findByLoanAccount_Id(loanAccountId);
-
-        log.debug("Payment history records fetched: {}", payments.size());
-
+        List<LoanPayment> payments = loanPaymentRepository.findByLoanAccount_Id(loanAccountId);
         List<PaymentHistoryResponse> response = new ArrayList<>();
 
         for (LoanPayment payment : payments) {
-            response.add(new PaymentHistoryResponse(
-                    payment.getId(),
-                    payment.getPaymentAmount(),
-                    payment.getPaymentDate(),
-                    payment.getPaymentStatus(),
-                    payment.getPaymentName()
-            ));
+            response.add(new PaymentHistoryResponse(payment.getId(), payment.getPaymentAmount(), payment.getPaymentDate(), payment.getPaymentStatus(), payment.getPaymentName()));
+        }
+        return response;
+    }
+
+    // PARTIAL FORECLOSURE PAYMENT
+
+    @Override
+    public PaymentOrderResponse createPartialClosurePaymentOrder(Long requestId) throws RazorpayException {
+
+        ForeClosureRequest request = foreClosureRequestRepository.findById(requestId).orElseThrow(() -> new RuntimeException("Foreclosure request not found"));
+
+        if (!"Approved".equalsIgnoreCase(request.getStatus())) {
+            throw new RuntimeException("Only approved foreclosure requests can be paid");
         }
 
-        log.info("Payment history retrieved successfully");
+        if (Boolean.TRUE.equals(request.getPaid())) {
+            throw new RuntimeException("Foreclosure request is already paid");
+        }
 
-        return response;
+        BigDecimal amount = request.getPartialAmount();
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Invalid partial payment amount");
+        }
+
+        Order order = createOrder(amount, "PARTIAL_" + requestId);
+        String orderId = order.get("id");
+
+        PaymentTransaction transaction = new PaymentTransaction();
+        transaction.setLoanAccount(request.getLoanAccount());
+        transaction.setEmiSchedule(null);
+        transaction.setForeClosureRequest(request);
+        transaction.setRazorpayOrderId(orderId);
+        transaction.setAmount(amount);
+        transaction.setStatus("CREATED");
+        transaction.setCreatedAt(LocalDateTime.now());
+
+        paymentTransactionRepository.save(transaction);
+
+        return new PaymentOrderResponse(orderId, amount, "INR", razorpayConfig.getKeyId());
+    }
+
+    @Override
+    @Transactional
+    public void verifyPartialClosurePayment(VerifyPaymentRequest request) throws RazorpayException {
+
+        if (request == null || request.getRazorpayOrderId() == null || request.getRazorpayOrderId().isBlank() || request.getRazorpayPaymentId() == null || request.getRazorpayPaymentId().isBlank() || request.getRazorpaySignature() == null || request.getRazorpaySignature().isBlank()) {
+
+            throw new RuntimeException("Payment details are required");
+        }
+
+        PaymentTransaction transaction = paymentTransactionRepository.findByRazorpayOrderId(request.getRazorpayOrderId()).orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+        ForeClosureRequest closureRequest = transaction.getForeClosureRequest();
+
+        if (closureRequest == null || transaction.getEmiSchedule() != null) {
+            throw new RuntimeException("Invalid partial closure transaction");
+        }
+
+        if ("SUCCESS".equalsIgnoreCase(transaction.getStatus()) || Boolean.TRUE.equals(closureRequest.getPaid())) {
+            throw new RuntimeException("Payment already processed");
+        }
+
+        if (!"CREATED".equalsIgnoreCase(transaction.getStatus())) {
+            throw new RuntimeException("Transaction is not awaiting payment");
+        }
+
+        if (!"Approved".equalsIgnoreCase(closureRequest.getStatus())) {
+            throw new RuntimeException("Foreclosure request is not approved");
+        }
+
+        String payload = request.getRazorpayOrderId() + "|" + request.getRazorpayPaymentId();
+
+        boolean valid = Utils.verifySignature(payload, request.getRazorpaySignature(), razorpayConfig.getKeySecret());
+
+        if (!valid) {
+            throw new InvalidPaymentSignatureException("Invalid signature");
+        }
+
+        LoanAccount loanAccount = transaction.getLoanAccount();
+        BigDecimal amount = transaction.getAmount();
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Invalid payment amount");
+        }
+
+        if (closureRequest.getPartialAmount() == null || closureRequest.getPartialAmount().compareTo(amount) != 0) {
+            throw new RuntimeException("Partial closure amount mismatch");
+        }
+
+        BigDecimal outstanding = loanAccount.getOutstandingPrincipal();
+
+        if (outstanding == null || amount.compareTo(outstanding) > 0) {
+            throw new RuntimeException("Insufficient outstanding principal");
+        }
+
+        LoanPayment payment = new LoanPayment();
+        payment.setLoanAccount(loanAccount);
+        payment.setPaymentAmount(amount);
+        payment.setPaymentDate(LocalDate.now());
+        payment.setPaymentStatus("SUCCESS");
+        payment.setPaymentName("Partial Closure Payment");
+
+        loanPaymentRepository.save(payment);
+
+        BigDecimal totalPaid = loanAccount.getTotalPaidAmount();
+
+        if (totalPaid == null) {
+            totalPaid = BigDecimal.ZERO;
+        }
+
+        loanAccount.setTotalPaidAmount(totalPaid.add(amount));
+        loanAccount.setOutstandingPrincipal(outstanding.subtract(amount));
+
+        loanAccountRepository.save(loanAccount);
+
+        LoanClosure closure = new LoanClosure();
+        closure.setLoanAccount(loanAccount);
+        closure.setClosureType("PARTIAL_FORECLOSURE");
+        closure.setFinalSettlementAmount(amount);
+        closure.setClosureDate(LocalDate.now());
+        closure.setClosedBy(closureRequest.getClosedBy());
+        closure.setRemarks(closureRequest.getReason() != null ? closureRequest.getReason() : "Partial settlement processed successfully");
+        closure.setClosureStatus("PARTIAL_CLOSED");
+
+        loanClosureRepository.save(closure);
+
+        closureRequest.setPaid(true);
+        closureRequest.setPaidDate(LocalDate.now());
+        closureRequest.setStatus("Completed");
+
+        foreClosureRequestRepository.save(closureRequest);
+
+        transaction.setRazorpayPaymentId(request.getRazorpayPaymentId());
+        transaction.setRazorpaySignature(request.getRazorpaySignature());
+        transaction.setStatus("SUCCESS");
+        emiSchedulerService.recalculateSchedule(loanAccount.getId());
+        paymentTransactionRepository.save(transaction);
+    }
+
+    // FULL FORECLOSURE PAYMENT
+
+    @Override
+    public PaymentOrderResponse createFullClosurePaymentOrder(Long requestId) throws RazorpayException {
+
+        ForeClosureRequest request = foreClosureRequestRepository.findById(requestId).orElseThrow(() -> new RuntimeException("Foreclosure request not found"));
+
+        if (!"Approved".equalsIgnoreCase(request.getStatus())) {
+            throw new RuntimeException("Only approved foreclosure requests can be paid");
+        }
+
+        if (Boolean.TRUE.equals(request.getPaid())) {
+            throw new RuntimeException("Foreclosure request is already paid");
+        }
+
+        BigDecimal amount = request.getForeClosureAmount();
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Invalid full closure amount");
+        }
+
+        Order order = createOrder(amount, "FULL_" + requestId);
+        String orderId = order.get("id");
+
+        PaymentTransaction transaction = new PaymentTransaction();
+        transaction.setLoanAccount(request.getLoanAccount());
+        transaction.setEmiSchedule(null);
+        transaction.setForeClosureRequest(request);
+        transaction.setRazorpayOrderId(orderId);
+        transaction.setAmount(amount);
+        transaction.setStatus("CREATED");
+        transaction.setCreatedAt(LocalDateTime.now());
+
+        paymentTransactionRepository.save(transaction);
+
+        return new PaymentOrderResponse(orderId, amount, "INR", razorpayConfig.getKeyId());
+    }
+
+    @Override
+    @Transactional
+    public void verifyFullClosurePayment(VerifyPaymentRequest request) throws RazorpayException {
+
+        if (request == null || request.getRazorpayOrderId() == null || request.getRazorpayOrderId().isBlank() || request.getRazorpayPaymentId() == null || request.getRazorpayPaymentId().isBlank() || request.getRazorpaySignature() == null || request.getRazorpaySignature().isBlank()) {
+
+            throw new RuntimeException("Payment details are required");
+        }
+
+        PaymentTransaction transaction = paymentTransactionRepository.findByRazorpayOrderId(request.getRazorpayOrderId()).orElseThrow(() -> new RuntimeException("Transaction not found"));
+
+        ForeClosureRequest closureRequest = transaction.getForeClosureRequest();
+
+        if (closureRequest == null || transaction.getEmiSchedule() != null || !"FULL".equalsIgnoreCase(closureRequest.getForeClosureType())) {
+
+            throw new RuntimeException("Invalid full closure transaction");
+        }
+
+        if ("SUCCESS".equalsIgnoreCase(transaction.getStatus()) || Boolean.TRUE.equals(closureRequest.getPaid())) {
+            throw new RuntimeException("Payment already processed");
+        }
+
+        if (!"CREATED".equalsIgnoreCase(transaction.getStatus())) {
+            throw new RuntimeException("Transaction is not awaiting payment");
+        }
+
+        if (!"Approved".equalsIgnoreCase(closureRequest.getStatus())) {
+            throw new RuntimeException("Full closure request is not approved");
+        }
+
+        String payload = request.getRazorpayOrderId() + "|" + request.getRazorpayPaymentId();
+
+        boolean valid = Utils.verifySignature(payload, request.getRazorpaySignature(), razorpayConfig.getKeySecret());
+
+        if (!valid) {
+            throw new InvalidPaymentSignatureException("Invalid signature");
+        }
+
+        BigDecimal amount = transaction.getAmount();
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0 || closureRequest.getForeClosureAmount() == null || amount.compareTo(closureRequest.getForeClosureAmount()) != 0) {
+
+            throw new RuntimeException("Full closure amount mismatch");
+        }
+
+        LoanAccount loanAccount = transaction.getLoanAccount();
+
+        LoanPayment payment = new LoanPayment();
+        payment.setLoanAccount(loanAccount);
+        payment.setPaymentAmount(amount);
+        payment.setPaymentDate(LocalDate.now());
+        payment.setPaymentStatus("SUCCESS");
+        payment.setPaymentName("Full Closure Payment");
+
+        loanPaymentRepository.save(payment);
+
+        BigDecimal totalPaid = loanAccount.getTotalPaidAmount();
+
+        if (totalPaid == null) {
+            totalPaid = BigDecimal.ZERO;
+        }
+
+        loanAccount.setTotalPaidAmount(totalPaid.add(amount));
+        loanAccount.setOutstandingPrincipal(BigDecimal.ZERO);
+        loanAccount.setLoanStatus("CLOSED");
+
+        loanAccountRepository.save(loanAccount);
+
+        LoanClosure closure = new LoanClosure();
+        closure.setLoanAccount(loanAccount);
+        closure.setClosureType("FORECLOSURE");
+        closure.setFinalSettlementAmount(amount);
+        closure.setClosureDate(LocalDate.now());
+        closure.setClosedBy(closureRequest.getClosedBy());
+        closure.setRemarks(closureRequest.getReason() != null ? closureRequest.getReason() : "Full settlement processed via foreclosure");
+        closure.setClosureStatus("CLOSED");
+
+        loanClosureRepository.save(closure);
+
+        closureRequest.setPaid(true);
+        closureRequest.setPaidDate(LocalDate.now());
+        closureRequest.setStatus("Completed");
+
+        foreClosureRequestRepository.save(closureRequest);
+
+        transaction.setRazorpayPaymentId(request.getRazorpayPaymentId());
+        transaction.setRazorpaySignature(request.getRazorpaySignature());
+        transaction.setStatus("SUCCESS");
+        emiSchedulerService.recalculateSchedule(loanAccount.getId());
+        paymentTransactionRepository.save(transaction);
     }
 }
