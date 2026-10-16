@@ -32,6 +32,7 @@ public class SecurityConfig {
                 new JwtAuthenticationFilter(jwtService, userRepository);
 
         http
+                .cors(cors -> {})
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
