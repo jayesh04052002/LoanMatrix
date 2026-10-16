@@ -13,6 +13,8 @@ import com.example.LoanMatrix.repository.CustomerRepository;
 import com.example.LoanMatrix.repository.eligibility.EligibilityResultRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import com.example.LoanMatrix.service.scorecard.ScoreCardService;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -25,15 +27,17 @@ public class EligibilityServiceImpl implements EligibilityService {
     private final CustomerRepository customerRepository;
     private final CibilReportRepository cibilReportRepository;
     private final EligibilityResultRepository eligibilityResultRepository;
+    private final ScoreCardService scoreCardService;
 
     public EligibilityServiceImpl(
             CustomerRepository customerRepository,
             CibilReportRepository cibilReportRepository,
-            EligibilityResultRepository eligibilityResultRepository) {
+            EligibilityResultRepository eligibilityResultRepository, ScoreCardService scoreCardService) {
 
         this.customerRepository = customerRepository;
         this.cibilReportRepository = cibilReportRepository;
         this.eligibilityResultRepository = eligibilityResultRepository;
+        this.scoreCardService = scoreCardService;
     }
 
     @Override
@@ -76,6 +80,7 @@ public class EligibilityServiceImpl implements EligibilityService {
     }
 
     @Override
+    @Transactional
     public EligibilityResponse checkEligibility(Long customerId) {
         log.info("Checking loan eligibility for Customer ID: {}", customerId);
 
@@ -184,7 +189,10 @@ public class EligibilityServiceImpl implements EligibilityService {
         result.setEligibleLoanAmount(eligibleLoanAmount);
         result.setRejectionReason(null);
 
-        eligibilityResultRepository.save(result);
+        EligibilityResult savedResult =
+                eligibilityResultRepository.save(result);
+
+        scoreCardService.saveOrUpdateFromEligibility(savedResult);
 
         log.info("Eligibility result saved for Customer ID: {}", customerId);
 
@@ -214,6 +222,7 @@ public class EligibilityServiceImpl implements EligibilityService {
     }
 
     @Override
+    @Transactional
     public void approveEligibility(Long customerId) {
         log.info("Processing eligibility approval for Customer ID: {}", customerId);
 
@@ -249,12 +258,16 @@ public class EligibilityServiceImpl implements EligibilityService {
         result.setEligible(true);
         result.setRejectionReason(null);
 
-        eligibilityResultRepository.save(result);
+        EligibilityResult savedResult =
+                eligibilityResultRepository.save(result);
+
+        scoreCardService.saveOrUpdateFromEligibility(savedResult);
 
         log.info("Eligibility approved by officer for Customer ID: {}", customerId);
     }
 
     @Override
+    @Transactional
     public void rejectEligibility(Long customerId) {
         log.info("Processing eligibility rejection for Customer ID: {}", customerId);
 
@@ -290,7 +303,10 @@ public class EligibilityServiceImpl implements EligibilityService {
         result.setEligible(false);
         result.setRejectionReason("Rejected by officer");
 
-        eligibilityResultRepository.save(result);
+        EligibilityResult savedResult =
+                eligibilityResultRepository.save(result);
+
+        scoreCardService.saveOrUpdateFromEligibility(savedResult);
 
         log.info("Eligibility rejected by officer for Customer ID: {}", customerId);
     }
