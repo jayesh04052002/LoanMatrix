@@ -12,6 +12,7 @@ import com.example.LoanMatrix.repository.disbursement.DisbursementRepository;
 import com.example.LoanMatrix.repository.disbursement.LoanAccountDisbursementRepository;
 import com.example.LoanMatrix.repository.sanction.LoanDealSanctionRepository;
 import com.example.LoanMatrix.repository.sanction.SanctionLetterRepository;
+import com.example.LoanMatrix.service.EmiScheduler.EmiSchedulerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class DisbursementServiceImpl implements DisbursementService {
     private final LoanAccountDisbursementRepository loanAccountRepository;
     private final LoanDealSanctionRepository loanDealRepository;
     private final SanctionLetterRepository sanctionLetterRepository;
+    private final EmiSchedulerService emiSchedulerService;
 
     @Override
     @Transactional
@@ -110,6 +112,9 @@ public class DisbursementServiceImpl implements DisbursementService {
 
         log.info("Loan disbursement process completed successfully for Deal ID: {}",
                 requestDto.getDealId());
+
+        // Generate the initial EMI schedule for the newly created loan account
+        emiSchedulerService.generateSchedule(savedAccount.getId());
 
         return mapToResponseDto(savedDisbursement, savedAccount);
     }

@@ -122,4 +122,39 @@ public class ApplyLoanController {
                         .build()
         );
     }
+
+    /**
+     * 6. Fetch all deals that are APPROVED (Used by Officer to Generate Sanction Letters)
+     */
+    @GetMapping("/approved")
+    public ResponseEntity<ApiResponse<List<ApplyLoanResponseDto>>> getApprovedDeals() {
+        log.info("REST request to fetch all approved deals for sanction generation");
+        List<ApplyLoanResponseDto> approvedDeals = applyLoanService.getApprovedDeals();
+
+        return ResponseEntity.ok(
+                ApiResponse.<List<ApplyLoanResponseDto>>builder()
+                        .success(true)
+                        .message("Fetched approved deals successfully.")
+                        .data(approvedDeals)
+                        .build()
+        );
+    }
+
+    /**
+     * 7. Fetch all deals regardless of status
+     */
+    @GetMapping("/all")
+    public ResponseEntity<ApiResponse<List<ApplyLoanResponseDto>>> getAllDeals() {
+        log.info("REST request to fetch all deals");
+        List<ApplyLoanResponseDto> allDeals = applyLoanService.getAllDeals();
+
+        return ResponseEntity.ok(
+                ApiResponse.<List<ApplyLoanResponseDto>>builder()
+                        .success(true)
+                        .message("Fetched all deals successfully.")
+                        .data(allDeals)
+                        .build()
+        );
+    }
+
 }
