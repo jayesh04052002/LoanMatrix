@@ -1,10 +1,11 @@
- package com.example.LoanMatrix.service.deal;
+package com.example.LoanMatrix.service.deal;
 
 import com.example.LoanMatrix.dto.deal.ApplyLoanRequestDto;
 import com.example.LoanMatrix.dto.deal.ApplyLoanResponseDto;
 import com.example.LoanMatrix.dto.deal.LoanTypeOptionDto;
 import com.example.LoanMatrix.entity.Customer;
 import com.example.LoanMatrix.entity.DealReview;
+import com.example.LoanMatrix.entity.EligibilityResult;
 import com.example.LoanMatrix.entity.LoanDeal;
 import com.example.LoanMatrix.entity.User;
 import com.example.LoanMatrix.exception.InvalidLoanOperationException;
@@ -12,6 +13,7 @@ import com.example.LoanMatrix.exception.ResourceNotFoundException;
 import com.example.LoanMatrix.repository.CustomerRepository;
 import com.example.LoanMatrix.repository.UserRepository;
 import com.example.LoanMatrix.repository.deal.DealReviewRepository;
+import com.example.LoanMatrix.repository.eligibility.EligibilityResultRepository;
 import com.example.LoanMatrix.repository.sanction.LoanDealSanctionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,11 +37,15 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
     private final DealReviewRepository dealReviewRepository;
     private final UserRepository userRepository;
 
+    // Injected partner's actual Eligibility repository
+    private final EligibilityResultRepository eligibilityResultRepository;
+
     @Override
     @Transactional
     public ApplyLoanResponseDto applyForLoan(ApplyLoanRequestDto requestDto) {
         log.info("Processing loan application for Customer ID: {}", requestDto.getCustomerId());
 
+        // 1. Verify Customer exists
         Customer customer = customerRepository.findById(requestDto.getCustomerId())
                 .orElseThrow(() -> {
                     log.warn("Customer not found for loan application. Customer ID: {}",
@@ -48,20 +54,49 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
                             "Customer not found with ID: " + requestDto.getCustomerId());
                 });
 
-        log.debug("Customer found. Determining interest rate for loan type: {}",
-                requestDto.getLoanType());
+        // ================= STRICT ELIGIBILITY VALIDATION =================
+        log.info("Verifying scorecard eligibility for Customer ID: {}", customer.getId());
 
+        EligibilityResult eligibility = eligibilityResultRepository.findByCustomer(customer);
+
+        // Guard 1: Must have an eligibility/scorecard record
+        if (eligibility == null) {
+            log.warn("Customer ID {} has not undergone eligibility assessment.", customer.getId());
+            throw new InvalidLoanOperationException(
+                    "You cannot apply for a loan yet. Please check your CIBIL score and Scorecard eligibility first.");
+        }
+
+        // Guard 2: Must be approved / eligible (Boolean.TRUE)
+        if (!Boolean.TRUE.equals(eligibility.getEligible())) {
+            String rejectionReason = eligibility.getRejectionReason();
+            String message = (rejectionReason != null && !rejectionReason.isBlank())
+                    ? "Application rejected: " + rejectionReason
+                    : "You are not eligible to apply for a loan at this time based on your credit evaluation.";
+            log.warn("Customer ID {} is not eligible. Reason: {}", customer.getId(), message);
+            throw new InvalidLoanOperationException(message);
+        }
+
+        // Guard 3: Requested amount cannot exceed eligible loan amount
+        BigDecimal maxAllowedAmount = eligibility.getEligibleLoanAmount();
+        if (maxAllowedAmount != null && requestDto.getLoanAmount().compareTo(maxAllowedAmount) > 0) {
+            log.warn("Customer requested amount {} exceeds max eligible limit {}",
+                    requestDto.getLoanAmount(), maxAllowedAmount);
+            throw new InvalidLoanOperationException(
+                    "Requested amount exceeds your maximum approved eligible limit of ₹ " + maxAllowedAmount);
+        }
+
+        log.info("Customer ID {} passed eligibility validation. Eligible limit: ₹ {}",
+                customer.getId(), maxAllowedAmount);
+        // ================================================================
+
+        log.debug("Determining interest rate for loan type: {}", requestDto.getLoanType());
         BigDecimal interestRate = determineInterestRate(requestDto.getLoanType());
-
-        log.debug("Interest rate determined successfully.");
 
         BigDecimal calculatedEmi = calculateMonthlyEmi(
                 requestDto.getLoanAmount(),
                 interestRate,
                 requestDto.getTenureMonths()
         );
-
-        log.debug("Monthly EMI calculated successfully.");
 
         LoanDeal deal = new LoanDeal();
         deal.setCustomer(customer);
@@ -217,6 +252,30 @@ public class ApplyLoanServiceImpl implements ApplyLoanService {
                         .interestRate(BigDecimal.valueOf(10.50))
                         .build()
         );
+    }
+
+    @Override
+    public List<ApplyLoanResponseDto> getApprovedDeals() {
+        log.info("Fetching deals that have been APPROVED by officer");
+
+        List<ApplyLoanResponseDto> approvedDeals = loanDealRepository.findAll()
+                .stream()
+                .map(this::deriveStatusAndMap)
+                .filter(dto -> "APPROVED".equalsIgnoreCase(dto.getStatus()))
+                .collect(Collectors.toList());
+
+        log.info("Approved deals fetched successfully. Count: {}", approvedDeals.size());
+        return approvedDeals;
+    }
+
+    @Override
+    public List<ApplyLoanResponseDto> getAllDeals() {
+        log.info("Fetching all loan deals with their derived review status");
+
+        return loanDealRepository.findAll()
+                .stream()
+                .map(this::deriveStatusAndMap)
+                .collect(Collectors.toList());
     }
 
     private ApplyLoanResponseDto mapToDto(LoanDeal deal, String status) {

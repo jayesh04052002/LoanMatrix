@@ -14,4 +14,8 @@ public interface ApplyLoanService {
     ApplyLoanResponseDto reviewDeal(Long dealId, Long officerId, String status);
     ApplyLoanResponseDto deriveStatusAndMap(LoanDeal deal);
     List<LoanTypeOptionDto> getAvailableLoanTypes();
+
+
+    List<ApplyLoanResponseDto> getApprovedDeals();
+    List<ApplyLoanResponseDto> getAllDeals();
 }
