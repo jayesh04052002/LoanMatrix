@@ -1,5 +1,6 @@
 package com.example.LoanMatrix.service.KycVerification;
 
+import com.example.LoanMatrix.dto.KycVerification.PendingKycCustomerResponse;
 import com.example.LoanMatrix.entity.Customer;
 import com.example.LoanMatrix.entity.KycDocument;
 import com.example.LoanMatrix.exception.CustomerNotFoundException;
@@ -18,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -200,5 +202,40 @@ public class KycVerificationServiceImpl implements KycVerificationService {
             log.error("Unable to read KYC document. Document ID: {}", documentId, e);
             throw new FileStorageException("Unable to view document");
         }
+    }
+
+
+    @Override
+    public List<PendingKycCustomerResponse> getCustomersWithPendingKyc() {
+
+        List<KycDocument> documents =
+                kycDocumentRepository.findByVerificationStatus("PENDING");
+
+        List<PendingKycCustomerResponse> customers = new ArrayList<>();
+
+        for (KycDocument document : documents) {
+
+            Customer customer = document.getCustomer();
+
+            boolean alreadyAdded = false;
+
+            for (PendingKycCustomerResponse existing : customers) {
+                if (existing.getCustomerId().equals(customer.getId())) {
+                    alreadyAdded = true;
+                    break;
+                }
+            }
+
+            if (!alreadyAdded) {
+                customers.add(new PendingKycCustomerResponse(
+                        customer.getId(),
+                        customer.getFirstName() + " " + customer.getLastName(),
+                        customer.getEmail(),
+                        customer.getMobileNo()
+                ));
+            }
+        }
+
+        return customers;
     }
 }

@@ -3,6 +3,7 @@ package com.example.LoanMatrix.controller.KycVerification;
 
 import com.example.LoanMatrix.dto.KycVerification.KycDocumentResponse;
 import com.example.LoanMatrix.dto.KycVerification.KycUploadRequest;
+import com.example.LoanMatrix.dto.KycVerification.PendingKycCustomerResponse;
 import com.example.LoanMatrix.entity.KycDocument;
 import com.example.LoanMatrix.response.ApiResponse;
 import com.example.LoanMatrix.service.KycVerification.KycVerificationService;
@@ -129,8 +130,16 @@ public class KycVerificationController {
     @GetMapping("/document/{documentId}")
     public ResponseEntity<byte[]> viewDocument(
             @PathVariable Long documentId) {
+
         byte[] file = kycVerificationService.viewDocument(documentId);
-        return ResponseEntity.ok(file);
+
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.IMAGE_PNG)
+                .header(
+                        org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"document.png\""
+                )
+                .body(file);
     }
 
     private KycDocumentResponse convertToResponse(KycDocument document) {
@@ -141,4 +150,22 @@ public class KycVerificationController {
                 document.getVerificationStatus()
         );
     }
+
+    @GetMapping("/pending/customers")
+    public ResponseEntity<ApiResponse<List<PendingKycCustomerResponse>>>
+    getCustomersWithPendingKyc() {
+
+        List<PendingKycCustomerResponse> customers =
+                kycVerificationService.getCustomersWithPendingKyc();
+
+        ApiResponse<List<PendingKycCustomerResponse>> response =
+                ApiResponse.<List<PendingKycCustomerResponse>>builder()
+                        .success(true)
+                        .message("Customers with pending KYC fetched successfully")
+                        .data(customers)
+                        .build();
+
+        return ResponseEntity.ok(response);
+    }
+
 }

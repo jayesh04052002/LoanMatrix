@@ -1,5 +1,6 @@
 package com.example.LoanMatrix.service.KycVerification;
 
+import com.example.LoanMatrix.dto.KycVerification.PendingKycCustomerResponse;
 import com.example.LoanMatrix.entity.KycDocument;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,4 +20,6 @@ public interface KycVerificationService {
     KycDocument rejectDocument(Long documentId);
 
     byte[] viewDocument(Long documentId);
+
+    List<PendingKycCustomerResponse> getCustomersWithPendingKyc();
 }
